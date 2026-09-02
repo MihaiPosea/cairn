@@ -10,6 +10,7 @@ package jsts
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -135,8 +136,23 @@ func (p *Parser) Parse(path string, src []byte) ([]lang.RawImport, error) {
 	return out, nil
 }
 
-// fromImportStatement handles `import ... from "x"` and bare `import "x"`.
+// fromImportStatement handles `import ... from "x"`, bare `import "x"`, and
+// TypeScript's `import x = require("y")`.
 func fromImportStatement(n *ts.Node, l *ts.Language, src []byte) (lang.RawImport, bool) {
+	// `import fs = require("node:fs")` nests its string inside an
+	// import_require_clause rather than hanging it off the statement, so a
+	// direct-child lookup misses it entirely. This form is still common in
+	// older TypeScript and throughout .d.ts files.
+	if clause := directChild(n, l, "import_require_clause"); clause != nil {
+		if s := directChild(clause, l, "string"); s != nil {
+			return lang.RawImport{
+				Specifier: stringValue(s, l, src),
+				Kind:      lang.Require,
+				Line:      line(n),
+			}, true
+		}
+	}
+
 	spec, ok := sourceString(n, l, src)
 	if !ok {
 		return lang.RawImport{}, false
@@ -213,18 +229,43 @@ func sourceString(n *ts.Node, l *ts.Language, src []byte) (string, bool) {
 	return stringValue(s, l, src), true
 }
 
-// stringValue reads the text inside the quotes.
+// stringValue reads the text inside the quotes, decoding escapes.
 //
 // tree-sitter models a string as quote / string_fragment / quote, so the
-// fragment already excludes them. An empty string ("") has no fragment child,
-// which is why the fallback trims manually rather than assuming one exists.
+// fragment already excludes them. But a specifier containing an escape splits
+// into several children — string_fragment, escape_sequence, string_fragment —
+// and returning only the first silently truncates the path. "./with\u0020space"
+// became "./with", which then fails to resolve for no visible reason.
+//
+// So: take the raw text and let strconv.Unquote decode it, which handles \u,
+// \n and \\ exactly as JavaScript does. Unquote rejects single-quoted and
+// backtick strings, so those fall back to concatenating the fragments.
 func stringValue(s *ts.Node, l *ts.Language, src []byte) string {
-	for _, c := range s.Children() {
-		if c.Type(l) == "string_fragment" {
-			return c.Text(src)
+	raw := s.Text(src)
+	if len(raw) >= 2 && raw[0] == '"' {
+		if decoded, err := strconv.Unquote(raw); err == nil {
+			return decoded
 		}
 	}
-	return strings.Trim(s.Text(src), `"'`+"`")
+
+	var sb strings.Builder
+	for _, c := range s.Children() {
+		switch c.Type(l) {
+		case "string_fragment":
+			sb.WriteString(c.Text(src))
+		case "escape_sequence":
+			// Decode by wrapping in quotes so strconv does the work.
+			if decoded, err := strconv.Unquote(`"` + c.Text(src) + `"`); err == nil {
+				sb.WriteString(decoded)
+			} else {
+				sb.WriteString(c.Text(src))
+			}
+		}
+	}
+	if sb.Len() > 0 {
+		return sb.String()
+	}
+	return strings.Trim(raw, `"'`+"`")
 }
 
 func directChild(n *ts.Node, l *ts.Language, typ string) *ts.Node {
