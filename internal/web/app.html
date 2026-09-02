@@ -1696,7 +1696,7 @@ async function showSource(path, line) {
 // how many.
 document.getElementById('hint').textContent = DATA.truncated
   ? `${DATA.truncated} nodes not sent · f fit · c reset`
-  : 'click for details · double-click a folder to go in · / to search';
+  : 'click for details · double-click to go in · esc back · / search · f fit';
 
 // Light by default, matching the site; the choice sticks per browser.
 function setTheme(t) {
@@ -1840,8 +1840,20 @@ qEl.addEventListener('keydown', e => {
   if (e.key === 'Escape') { qEl.value = ''; runSearch(); qEl.blur(); }
   if (e.key === 'Enter' && hits.length) { navigateTo(hits[0].id); }
 });
+// Keys. The old handler was removed with the expand/collapse model it drove,
+// which left "f" and "c" doing nothing while the footer still advertised them.
 addEventListener('keydown', e => {
-  if (e.key === '/' && document.activeElement !== qEl) { e.preventDefault(); qEl.focus(); }
+  if (document.activeElement === qEl) return;
+  if (e.key === '/') { e.preventDefault(); qEl.focus(); return; }
+  if (e.key === 'f') { fit(true); return; }
+  // Up a level, or clear the selection first if there is one.
+  if (e.key === 'Escape' || e.key === 'Backspace' || e.key === 'ArrowLeft') {
+    e.preventDefault();
+    if (selected) select(null);
+    else if (focus.length) navigate(focus.slice(0, -1));
+    return;
+  }
+  if (e.key === 'Home') navigate([]);
 });
 
 for (const t of document.querySelectorAll('.tab')) {
@@ -1891,8 +1903,20 @@ qEl.addEventListener('keydown', e => {
   if (e.key === 'Escape') { qEl.value = ''; runSearch(); qEl.blur(); }
   if (e.key === 'Enter' && hits.length) { navigateTo(hits[0].id); }
 });
+// Keys. The old handler was removed with the expand/collapse model it drove,
+// which left "f" and "c" doing nothing while the footer still advertised them.
 addEventListener('keydown', e => {
-  if (e.key === '/' && document.activeElement !== qEl) { e.preventDefault(); qEl.focus(); }
+  if (document.activeElement === qEl) return;
+  if (e.key === '/') { e.preventDefault(); qEl.focus(); return; }
+  if (e.key === 'f') { fit(true); return; }
+  // Up a level, or clear the selection first if there is one.
+  if (e.key === 'Escape' || e.key === 'Backspace' || e.key === 'ArrowLeft') {
+    e.preventDefault();
+    if (selected) select(null);
+    else if (focus.length) navigate(focus.slice(0, -1));
+    return;
+  }
+  if (e.key === 'Home') navigate([]);
 });
 
 for (const t of document.querySelectorAll('.tab')) {
