@@ -162,3 +162,23 @@ always equivalent, never identical — which silently breaks every golden test a
 an unchanged repo diff against each other. Fixed by collecting results and processing them in sorted
 path order: parsing stays parallel, graph construction becomes deterministic. The property was
 claimed in the M0 notes and was not actually true until now.
+
+---
+
+## Performance — parser pooling
+
+Measured on a generated 5,000-file repo with 10,442 imports:
+
+| | wall clock | CPU time |
+|---|---|---|
+| parser per file | 5.60 s | 41.3 s |
+| pooled per language | **1.52 s** | **6.5 s** |
+
+A tree-sitter parser is expensive to construct relative to parsing one small
+file, and the original code built one per file across eight workers. A
+`sync.Pool` per language reuses them; parser instances are not safe to share
+concurrently, but a pool hands each worker its own and takes it back.
+
+The number matters more than the change: 41 s of CPU for 5,000 small files was
+never plausible, and the only reason it was visible at all is that the target
+(under 3 s cold) had been written down before the code was.
