@@ -28,6 +28,9 @@ usage:
   cairn verify                  check cairn's graph against TypeScript's own resolver
   cairn serve                   open the graph in a browser
   cairn export <file.html>      write a standalone page you can send someone
+  cairn drift --base main       what this change did to the architecture
+  cairn context <file>          what to read before changing this file
+  cairn scope <file>            the files a search must cover — pipe into grep
   cairn affected [--base ref]   what needs re-running after your changes
 
 flags:
@@ -83,13 +86,14 @@ func run(args []string) error {
 	sizes := fs.Bool("sizes", false, "measure installed package sizes")
 	addr := fs.String("addr", "localhost:7777", "address for `cairn serve`")
 	withPkgs := fs.Bool("packages", false, "include packages in the graph view")
+	budget := fs.Int("budget", 0, "token budget for `cairn context`")
 	base := fs.String("base", "origin/main", "git ref to compare against for `cairn affected`")
 	// Go's flag package stops parsing at the first non-flag argument, so
 	// `cairn export graph.html --dir ~/repo` silently dropped --dir and
 	// exported the current directory instead. Four different repositories
 	// exported the same 40,547 bytes and nothing said a word. Every command
 	// here takes both a target and a --dir, so that shape is the normal one.
-	flags, rest := splitArgs(args[1:], map[string]bool{"dir": true, "addr": true, "base": true})
+	flags, rest := splitArgs(args[1:], map[string]bool{"dir": true, "addr": true, "base": true, "budget": true})
 	if err := fs.Parse(append(flags, rest...)); err != nil {
 		return err
 	}
@@ -172,6 +176,27 @@ func run(args []string) error {
 		}
 		return withScan(root, *sizes, func(res *scan.Result) error {
 			return exportGraph(res, target, *withPkgs)
+		})
+
+	case "drift":
+		return runDrift(root, *base, *asJSON)
+
+	case "context":
+		target, err := needsArg()
+		if err != nil {
+			return err
+		}
+		return withScan(root, false, func(res *scan.Result) error {
+			return runContext(res, target, *budget, *asJSON)
+		})
+
+	case "scope":
+		target, err := needsArg()
+		if err != nil {
+			return err
+		}
+		return withScan(root, false, func(res *scan.Result) error {
+			return runScope(res, target, *asJSON)
 		})
 
 	case "cost":

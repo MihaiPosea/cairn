@@ -3,10 +3,14 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/MihaiPosea/cairn/internal/affected"
+	"github.com/MihaiPosea/cairn/internal/agent"
+	"github.com/MihaiPosea/cairn/internal/drift"
 	"github.com/MihaiPosea/cairn/internal/graph"
+	"github.com/MihaiPosea/cairn/internal/modules"
 	"github.com/MihaiPosea/cairn/internal/query"
 	"github.com/MihaiPosea/cairn/internal/scan"
 	"github.com/MihaiPosea/cairn/internal/verify"
@@ -647,4 +651,144 @@ func runAffected(root string, res *scan.Result, base string, asJSON bool) error 
 	fmt.Println("\n  soundness: this follows import edges only. Tests that share a database,")
 	fmt.Println("  a fixture file, or global state are coupled in ways no import graph sees.")
 	return nil
+}
+
+// runContext answers "I am about to change this file, what else must I read".
+//
+// The plain output is deliberately shaped for a terminal and the --json for a
+// program, because both readers are real: a person checking whether the answer
+// is sane, and an agent consuming it.
+func runContext(res *scan.Result, target string, budget int, asJSON bool) error {
+	mm := modules.Build(res)
+	c, err := agent.Build(res, mm, target, agent.Options{Budget: budget})
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		return emit(c)
+	}
+
+	fmt.Printf("%s\n", c.Target)
+	if c.Module != "" {
+		fmt.Printf("in %s · %d files depend on it\n", c.Module, c.Blast)
+	} else {
+		fmt.Printf("%d files depend on it\n", c.Blast)
+	}
+	fmt.Println()
+	fmt.Printf("read these %d files (~%s tokens)\n", len(c.Read), thousands(c.Tokens))
+	for _, f := range c.Read {
+		fmt.Printf("  %-52s %s\n", f.Path, f.Why)
+	}
+	if c.Omitted > 0 {
+		fmt.Printf("\n%d more related files did not fit in the budget (~%s tokens)\n",
+			c.Omitted, thousands(c.OmittedTokens))
+	}
+	// Against the number of files in the graph, not the number scanned: those
+	// differ, and quoting the wrong one produced "scope: 888 files, not 668".
+	total := 0
+	for _, n := range res.Graph.Nodes {
+		if n.Kind == graph.File {
+			total++
+		}
+	}
+	fmt.Printf("\nsearch scope: %d of %d files — narrow grep to these\n", len(c.Scope), total)
+	fmt.Printf("  cairn scope %s | xargs rg <pattern>\n", c.Target)
+	if c.Warning != "" {
+		fmt.Printf("\nnote: %s\n", c.Warning)
+	}
+	return nil
+}
+
+// runScope prints the files a search could possibly need to look at.
+//
+// This is the half that makes the graph and grep work together rather than
+// compete. grep is excellent at finding words and has no idea which files
+// matter; the graph knows exactly which files could be involved and nothing
+// about words. Piping one into the other gives each the thing it lacks.
+func runScope(res *scan.Result, target string, asJSON bool) error {
+	mm := modules.Build(res)
+	c, err := agent.Build(res, mm, target, agent.Options{})
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		total := 0
+		for _, n := range res.Graph.Nodes {
+			if n.Kind == graph.File {
+				total++
+			}
+		}
+		return emit(map[string]any{
+			"target": c.Target, "scope": c.Scope,
+			"files": len(c.Scope), "of": total,
+		})
+	}
+	for _, p := range c.Scope {
+		fmt.Println(p)
+	}
+	return nil
+}
+
+func thousands(n int) string {
+	if n < 1000 {
+		return strconv.Itoa(n)
+	}
+	return strconv.Itoa(n/1000) + "k"
+}
+
+// runDrift reports what a change did to the shape of the program.
+func runDrift(root, base string, asJSON bool) error {
+	rep, err := drift.Compare(root, base)
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		if err := emit(rep); err != nil {
+			return err
+		}
+	} else {
+		printDrift(rep)
+	}
+	// A non-zero exit is what makes this usable as a gate. Only regressions
+	// count: a tool that fails a build because something got better would be
+	// turned off within a day.
+	if rep.Regressions > 0 {
+		os.Exit(1)
+	}
+	return nil
+}
+
+func printDrift(r *drift.Report) {
+	if r.Bail != "" {
+		fmt.Println(r.Bail)
+		return
+	}
+	fmt.Printf("%s → working tree · %d files changed\n\n", r.Base, r.FilesChanged)
+	if len(r.Findings) == 0 {
+		fmt.Println("nothing changed about the shape of the program.")
+	}
+	for _, f := range r.Findings {
+		mark := "  •"
+		switch f.Severity {
+		case drift.Regression:
+			mark = "  ✗"
+		case drift.Improvement:
+			mark = "  ✓"
+		}
+		fmt.Printf("%s %s\n", mark, f.Title)
+		fmt.Printf("     %s\n", f.Detail)
+		for i, it := range f.Items {
+			if i >= 6 {
+				fmt.Printf("     … and %d more\n", len(f.Items)-6)
+				break
+			}
+			fmt.Printf("     %s\n", it)
+		}
+		fmt.Println()
+	}
+	fmt.Printf("coupling: a change reaches %.0f%% of the repository (was %.0f%%), median over %d files\n",
+		r.Coupling.Head*100, r.Coupling.Base*100, r.Coupling.Sampled)
+	if r.Regressions > 0 {
+		fmt.Printf("\n%d regression%s\n", r.Regressions, plural(r.Regressions, "s"))
+	}
 }
