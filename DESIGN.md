@@ -263,3 +263,34 @@ relative             33
 No `tsconfig-paths` line. A perfect score on that repo says nothing whatsoever about alias handling.
 Reporting coverage turns "we passed" into "we passed, on these rules" — which is the only version of
 the claim that survives someone checking it.
+
+---
+
+## M7 — the view
+
+**One self-contained HTML file, not a Next.js app.**
+The plan called for a separate frontend. Building it revealed that a single embedded page does the
+job better: it keeps cairn a single Go binary with no npm anywhere, and it makes `cairn export
+graph.html` and `cairn serve` the *same artifact* rather than two implementations of one view. The
+exported file is 19 KB for a 28-node repo, opens with a double click, and needs no server.
+
+**Layered by depth, never force-directed.**
+Every dependency visualiser that reaches for a force-directed layout produces the same hairball, and
+the hairball is what people mean when they call these tools useless. Nodes sit in columns by their
+*longest* path from an entry point — longest, not shortest, or a file reached both directly and
+through five hops lands in the wrong column and its edges point backwards.
+
+Depth uses `TopoOrder`, so the graph package's own algorithm does the work. When the graph has a
+cycle `TopoOrder` correctly refuses, and layout falls back to bounded relaxation: inside a cycle
+there is no correct depth, only a consistent one, and the bound is what stops it spinning.
+
+**Truncation is stated, not silent.**
+Above 1,200 nodes the view keeps the ones with the largest blast radius and says how many it left
+out. A truncated view of the load-bearing files beats a complete view of nothing legible, but only
+if the reader knows it happened.
+
+**Clicking a node dims everything that is not upstream or downstream of it.** That is the whole
+interaction: the blast radius made visible rather than printed as a number.
+
+Verified in a real browser, not assumed: rendered, clicked a node, confirmed the panel showed
+`imported by app/page.tsx:2` and the highlight followed the actual dependency chain.

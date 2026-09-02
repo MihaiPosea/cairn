@@ -2,12 +2,14 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/MihaiPosea/cairn/internal/graph"
 	"github.com/MihaiPosea/cairn/internal/query"
 	"github.com/MihaiPosea/cairn/internal/scan"
 	"github.com/MihaiPosea/cairn/internal/verify"
+	"github.com/MihaiPosea/cairn/internal/web"
 )
 
 // ── scan ────────────────────────────────────────────────────────────────────
@@ -474,4 +476,36 @@ func runVerify(root string, asJSON bool) error {
 		}
 	}
 	return nil
+}
+
+// ── serve / export ──────────────────────────────────────────────────────────
+
+func serveGraph(res *scan.Result, addr string, withPackages bool) error {
+	p := web.Build(res, withPackages)
+	describeView(p)
+	return web.Serve(p, addr)
+}
+
+func exportGraph(res *scan.Result, path string, withPackages bool) error {
+	p := web.Build(res, withPackages)
+	if err := web.Export(p, path); err != nil {
+		return err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	describeView(p)
+	fmt.Printf("\nwrote %s (%s)\n", path, humanBytes(info.Size()))
+	fmt.Println("one file, no server, no dependencies — send it to anyone")
+	return nil
+}
+
+func describeView(p *web.Payload) {
+	fmt.Printf("%s\n\n", p.Root)
+	fmt.Printf("  %-22s %d\n", "nodes drawn", len(p.Nodes))
+	fmt.Printf("  %-22s %d\n", "edges drawn", len(p.Edges))
+	if p.Truncated > 0 {
+		fmt.Printf("  %-22s %d (kept the most-depended-on)\n", "not drawn", p.Truncated)
+	}
 }

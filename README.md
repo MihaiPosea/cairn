@@ -18,6 +18,9 @@ cairn dead                   files nothing reaches from an entry point
 cairn why left-pad           the path that dragged this package in
 cairn cycles                 import cycles, as readable chains
 cairn cost framer-motion     packages and bytes this one import pulls in
+cairn verify                 check the graph against TypeScript's own resolver
+cairn serve                  open the graph in a browser
+cairn export graph.html      one file you can send anyone, no server needed
 ```
 
 ## Why it exists
@@ -52,7 +55,7 @@ never uses path aliases says nothing about path aliases.
 - [x] M4 — the join, and the five answers
 - [x] M5 — incremental index: 1.53s cold, 75ms warm on 5,000 files
 - [x] M6 — verified against TypeScript's own resolver: 100% precision and recall on 10,442 imports
-- [ ] M7 — web UI
+- [x] M7 — self-contained web view (`cairn serve`, `cairn export`)
 
 ## Scope
 

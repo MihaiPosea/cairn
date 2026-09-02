@@ -26,6 +26,8 @@ usage:
   cairn cycles                  import cycles, as readable chains
   cairn cost <package>          packages and bytes this one import pulls in
   cairn verify                  check cairn's graph against TypeScript's own resolver
+  cairn serve                   open the graph in a browser
+  cairn export <file.html>      write a standalone page you can send someone
 
 flags:
   --dir <path>                  repo to scan (default: .)
@@ -51,6 +53,8 @@ func run(args []string) error {
 	dir := fs.String("dir", ".", "repo to scan")
 	asJSON := fs.Bool("json", false, "machine-readable output")
 	sizes := fs.Bool("sizes", false, "measure installed package sizes")
+	addr := fs.String("addr", "localhost:7777", "address for `cairn serve`")
+	withPkgs := fs.Bool("packages", false, "include packages in the graph view")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -115,6 +119,20 @@ func run(args []string) error {
 
 	case "verify":
 		return runVerify(root, *asJSON)
+
+	case "serve":
+		return withScan(root, *sizes, func(res *scan.Result) error {
+			return serveGraph(res, *addr, *withPkgs)
+		})
+
+	case "export":
+		target, err := needsArg()
+		if err != nil {
+			return err
+		}
+		return withScan(root, *sizes, func(res *scan.Result) error {
+			return exportGraph(res, target, *withPkgs)
+		})
 
 	case "cost":
 		target, err := needsArg()
