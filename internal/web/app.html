@@ -293,6 +293,13 @@ const NW = 236, NH = 24, HGAP = 34, VGAP = 12;
 // Below this many unconnected children it is not worth hiding them; they cost
 // less on screen than the box explaining where they went.
 const QUIET_MIN = 12;
+// A module view is a handful of boxes, and at the file-level sizes it sat as a
+// thin band across the middle of the window with the zoom pinned by its width.
+// Taller boxes and more air between them give the level an aspect closer to
+// the screen's, so the picture fills what it was given.
+let ROOMY = false;
+function boxH() { return ROOMY ? 34 : NH; }
+function gapV() { return ROOMY ? 22 : VGAP; }
 // Past this many lines a level stops being a picture of anything. Excalidraw's
 // components/ holds 362, and 362 strokes say strictly less than none plus a
 // sentence saying how many there are. Selection still draws its own.
@@ -356,6 +363,42 @@ for (const n of files) if (!n.parent) rootIds.push(n.id);
 
 function item(id) { return groups.get(id) || byId.get(id); }
 function childIds(g) { return [...g.kidIds, ...g.leaves]; }
+
+// Where to open.
+//
+// Not the literal repository root. That is usually scaffolding: excalidraw's
+// is dev-docs/, examples/, public/, scripts/ and one box holding 91% of the
+// code — a tidy picture that says nothing about the program. The architecture
+// is one or two levels in, and the reader should not have to go looking for
+// it. Vue's is packages/: reactivity at the base, runtime-core and shared in
+// the middle, vue on top.
+//
+// So descend while the level is really just one box, and stop as soon as the
+// split says something. The breadcrumb still shows the whole path, so nothing
+// is hidden — it is a starting point, not a restriction.
+function openingFocus() {
+  const at = f => { const save = focus; focus = f; const k = scopeChildren(); focus = save; return k; };
+  let f = [];
+  for (let i = 0; i < 4; i++) {
+    const kids = at(f);
+    if (!kids.length) break;
+    const total = kids.reduce((n, k) => n + (k.count || 1), 0);
+    let big = null;
+    for (const k of kids) {
+      if (!k.group || k.synthetic || !k.segs || !k.segs.length) continue;
+      if (!big || (k.count || 0) > (big.count || 0)) big = k;
+    }
+    if (!big) break;
+    // Informative: more than a couple of boxes, and no one of them is most of
+    // what is here.
+    if (kids.length >= 3 && (big.count || 0) < total * 0.6) break;
+    // But not at the price of a level nobody can read.
+    const next = at(big.segs);
+    if (next.length > 14 || next.length === 0) break;
+    f = big.segs.slice();
+  }
+  return f;
+}
 
 // ── scope ──────────────────────────────────────────────────────────────────
 //
@@ -509,7 +552,7 @@ function leafWidth(x) {
   return Math.max(MINW, Math.min(NW, Math.ceil(w) + 18));
 }
 
-function measureBox(x) { x.bw = x.group ? NW : leafWidth(x); x.bh = NH; }
+function measureBox(x) { x.bw = x.group ? NW : leafWidth(x); x.bh = boxH(); }
 
 // Pack a set of laid-out boxes into layers by depth, wrapping tall columns.
 function packChildren(kids) {
@@ -524,7 +567,7 @@ function packChildren(kids) {
   for (const d of depths) byLayer.get(d).sort((a, b) => a.label.localeCompare(b.label));
 
   // Wrap so a layer is never much taller than it is wide.
-  const total = kids.reduce((s, k) => s + k.bh + VGAP, 0);
+  const total = kids.reduce((s, k) => s + k.bh + gapV(), 0);
   const cap = Math.max(NH * 6, Math.sqrt(total * (NW + HGAP)) * 0.9);
 
   let x = 0, maxH = 0;
@@ -538,9 +581,9 @@ function packChildren(kids) {
         colX = x; colTop = 0; colW = 0;
       }
       k.rx = colX; k.ry = colTop;
-      colTop += k.bh + VGAP;
+      colTop += k.bh + gapV();
       colW = Math.max(colW, k.bw);
-      maxH = Math.max(maxH, colTop - VGAP);
+      maxH = Math.max(maxH, colTop - gapV());
     }
     x = colX + colW + LAYER_GAP;
     cols.push({ depth: d, x: spanStart, w: colX + colW - spanStart, n: byLayer.get(d).length });
@@ -666,6 +709,7 @@ function relayout() {
     kids.push(quietBox);
   }
 
+  ROOMY = kids.length <= 16;
   localDepths(kids, edges);
   for (const k of kids) measureBox(k);
   const b = packChildren(kids);
@@ -1623,6 +1667,8 @@ for (const t of document.querySelectorAll('.tab')) {
 readColors();
 addEventListener('resize', resize);
 
+relayout();
+focus = openingFocus();
 relayout();
 resize();
 fit(false);
