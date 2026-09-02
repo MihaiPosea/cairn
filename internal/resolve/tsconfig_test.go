@@ -41,10 +41,10 @@ func TestTSConfigExtendsChainChildWins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadTSConfig: %v", err)
 	}
-	if got := cfg.Paths["@/*"]; len(got) != 1 || got[0] != "./child/*" {
+	if got := cfg.Paths()["@/*"]; len(got) != 1 || got[0] != "./child/*" {
 		t.Errorf("child should override parent, got %v", got)
 	}
-	if got := cfg.Paths["~/*"]; len(got) != 1 || got[0] != "./tilde/*" {
+	if got := cfg.Paths()["~/*"]; len(got) != 1 || got[0] != "./tilde/*" {
 		t.Errorf("inherited alias lost, got %v", got)
 	}
 }
@@ -54,7 +54,7 @@ func TestNoTSConfigIsNotAnError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a repo with no tsconfig is normal, got error: %v", err)
 	}
-	if len(cfg.Paths) != 0 {
-		t.Errorf("expected no aliases, got %v", cfg.Paths)
+	if len(cfg.Rules) != 0 {
+		t.Errorf("expected no aliases, got %v", cfg.Rules)
 	}
 }

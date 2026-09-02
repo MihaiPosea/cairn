@@ -60,6 +60,9 @@ type Result struct {
 	Reason string
 	// Via records which rule matched, for debugging and for the UI.
 	Via string
+	// Platform is set when the import resolved through a platform-qualified
+	// file such as Button.ios.tsx, naming which variant was chosen.
+	Platform string
 	// CaseMismatch holds the specifier's casing when it differs from the file
 	// actually on disk.
 	//
@@ -75,6 +78,18 @@ type Result struct {
 // Order matters: TypeScript before JavaScript, because a repo mid-migration
 // often has both utils.ts and a stale utils.js, and the compiler prefers .ts.
 var extensionLadder = []string{".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".json"}
+
+// platformSuffixes are the qualifiers bundlers try before the plain filename.
+//
+// React Native resolves "./Button" to Button.ios.tsx on iOS and
+// Button.android.tsx on Android; Metro, Expo and several web bundlers all do a
+// version of this. Without it, every platform-split component in a React Native
+// app is an unresolved import.
+//
+// Order is deterministic rather than platform-correct: cairn is describing the
+// whole codebase, not building for one target, so the first match wins and the
+// choice is stable between runs.
+var platformSuffixes = []string{".native", ".ios", ".android", ".web", ".macos", ".windows"}
 
 // jsToTS maps a JavaScript extension to the TypeScript ones that can produce it.
 //
@@ -102,12 +117,32 @@ func init() {
 // It is read-only after construction and safe for concurrent use, which is what
 // lets the scanner fan out across files.
 type Resolver struct {
-	root     string // absolute repo root
-	tsconfig *TSConfig
-	aliases  []alias // precompiled, longest prefix first
+	root string // absolute repo root
+
+	// rootConfig is the tsconfig at the repo root, kept for HasAliases and for
+	// repos with a single config.
+	rootConfig  *TSConfig
+	rootAliases []alias
+
+	// configs caches the nearest tsconfig for a directory: dir -> *dirConfig.
+	//
+	// A monorepo puts a tsconfig in each package, and only the nearest one
+	// applies. Using the root config everywhere turns "@/helpers" into a
+	// phantom dependency on a package named "@".
+	configs sync.Map
+
+	// workspaces maps a monorepo package name to its location, so a
+	// cross-package import lands on source rather than being treated as an
+	// external dependency.
+	workspaces map[string]*Workspace
 
 	// dirs caches directory listings: path -> set of file names.
 	dirs sync.Map
+}
+
+// dirConfig is a compiled tsconfig applying to some directory.
+type dirConfig struct {
+	aliases []alias
 }
 
 // alias is one compiled tsconfig paths rule.
@@ -116,6 +151,7 @@ type alias struct {
 	suffix   string   // text after the '*'
 	wildcard bool     //
 	targets  []string // raw target patterns
+	base     string   // absolute directory the targets are relative to
 }
 
 // New builds a Resolver for a repo root, loading its tsconfig if present.
@@ -126,23 +162,58 @@ func New(root string) (*Resolver, error) {
 	}
 	cfg, cfgErr := LoadTSConfig(abs)
 	r := &Resolver{
-		root:     abs,
-		tsconfig: cfg,
+		root:       abs,
+		rootConfig: cfg,
+		workspaces: findWorkspaces(abs),
 	}
-	r.compileAliases()
+	r.rootAliases = compileAliases(cfg.Rules)
 	// A broken tsconfig is reported but not fatal — we simply have no aliases.
 	return r, cfgErr
 }
 
-// compileAliases turns the paths map into a list ordered by descending prefix
+// Workspaces returns the monorepo packages that were discovered, if any.
+func (r *Resolver) Workspaces() map[string]*Workspace { return r.workspaces }
+
+// configFor returns the compiled tsconfig nearest to a directory, walking up
+// to the repo root. Results are cached per directory.
+func (r *Resolver) configFor(dir string) *dirConfig {
+	if v, ok := r.configs.Load(dir); ok {
+		return v.(*dirConfig)
+	}
+
+	var found *dirConfig
+	for d := dir; ; {
+		if cfg, err := LoadTSConfig(d); err == nil && len(cfg.Rules) > 0 {
+			found = &dirConfig{aliases: compileAliases(cfg.Rules)}
+			break
+		}
+		if d == r.root || len(d) <= len(r.root) {
+			break
+		}
+		parent := filepath.Dir(d)
+		if parent == d {
+			break
+		}
+		d = parent
+	}
+	if found == nil {
+		found = &dirConfig{aliases: r.rootAliases}
+	}
+	r.configs.Store(dir, found)
+	return found
+}
+
+// compileAliases turns a paths map into a list ordered by descending prefix
 // length.
 //
 // TypeScript resolves ambiguity by longest matching prefix: given both "@/*"
-// and "@/lib/*", the specifier "@/lib/x" must use the second. Sorting once at
-// construction makes the lookup a simple first-match scan.
-func (r *Resolver) compileAliases() {
-	for pattern, targets := range r.tsconfig.Paths {
-		a := alias{targets: targets}
+// and "@/lib/*", the specifier "@/lib/x" must use the second. Sorting once
+// makes the lookup a simple first-match scan.
+func compileAliases(rules []AliasRule) []alias {
+	var out []alias
+	for _, rule := range rules {
+		pattern, targets := rule.Pattern, rule.Targets
+		a := alias{targets: targets, base: rule.Base}
 		if i := strings.Index(pattern, "*"); i >= 0 {
 			a.wildcard = true
 			a.prefix = pattern[:i]
@@ -150,18 +221,19 @@ func (r *Resolver) compileAliases() {
 		} else {
 			a.prefix = pattern
 		}
-		r.aliases = append(r.aliases, a)
+		out = append(out, a)
 	}
-	sort.SliceStable(r.aliases, func(i, j int) bool {
-		return len(r.aliases[i].prefix) > len(r.aliases[j].prefix)
+	sort.SliceStable(out, func(i, j int) bool {
+		return len(out[i].prefix) > len(out[j].prefix)
 	})
+	return out
 }
 
 // Root returns the absolute repo root.
 func (r *Resolver) Root() string { return r.root }
 
-// HasAliases reports whether a tsconfig contributed any path aliases.
-func (r *Resolver) HasAliases() bool { return len(r.aliases) > 0 }
+// HasAliases reports whether any tsconfig contributed path aliases.
+func (r *Resolver) HasAliases() bool { return len(r.rootAliases) > 0 }
 
 // Resolve answers what specifier points at, as imported from fromFile.
 // fromFile is repo-relative and slash-separated.
@@ -223,8 +295,9 @@ func (r *Resolver) Resolve(fromFile, specifier string) Result {
 		}
 	}
 
-	// 3. tsconfig path alias
-	if res, ok := r.tryAliases(specifier); ok {
+	// 3. tsconfig path alias, using the config nearest the importing file
+	fromDir := filepath.Dir(filepath.Join(r.root, filepath.FromSlash(fromFile)))
+	if res, ok := r.tryAliases(r.configFor(fromDir), specifier); ok {
 		return res
 	}
 
@@ -233,7 +306,12 @@ func (r *Resolver) Resolve(fromFile, specifier string) Result {
 		return Result{Kind: ToBuiltin, Name: specifier, Via: "bare-builtin"}
 	}
 
-	// 5. package
+	// 5. a package in this monorepo — your own code, not a dependency
+	if res, ok := r.tryWorkspace(specifier); ok {
+		return res
+	}
+
+	// 6. package
 	name, sub := splitPackage(specifier)
 	if name == "" {
 		return Result{Kind: Unresolved, Reason: "not a valid package name: " + specifier}
@@ -242,8 +320,8 @@ func (r *Resolver) Resolve(fromFile, specifier string) Result {
 }
 
 // tryAliases applies tsconfig paths, longest prefix first.
-func (r *Resolver) tryAliases(specifier string) (Result, bool) {
-	for _, a := range r.aliases {
+func (r *Resolver) tryAliases(cfg *dirConfig, specifier string) (Result, bool) {
+	for _, a := range cfg.aliases {
 		var capture string
 		if a.wildcard {
 			if !strings.HasPrefix(specifier, a.prefix) || !strings.HasSuffix(specifier, a.suffix) {
@@ -259,7 +337,7 @@ func (r *Resolver) tryAliases(specifier string) (Result, bool) {
 
 		for _, target := range a.targets {
 			candidate := strings.Replace(target, "*", capture, 1)
-			abs := filepath.Join(r.tsconfig.BaseURL, filepath.FromSlash(candidate))
+			abs := filepath.Join(a.base, filepath.FromSlash(candidate))
 			if res, ok := r.tryFile(abs); ok {
 				res.Via = "tsconfig-paths"
 				return res, true
@@ -308,6 +386,19 @@ func (r *Resolver) tryFile(abs string) (Result, bool) {
 	for _, ext := range extensionLadder {
 		if res, ok := r.file(abs + ext); ok {
 			return res, true
+		}
+	}
+
+	// Platform-qualified: ./Button -> Button.ios.tsx
+	//
+	// Tried after the plain ladder, so an unqualified file always wins when
+	// both exist — which is what a bundler does too.
+	for _, plat := range platformSuffixes {
+		for _, ext := range extensionLadder {
+			if res, ok := r.file(abs + plat + ext); ok {
+				res.Platform = strings.TrimPrefix(plat, ".")
+				return res, true
+			}
 		}
 	}
 
@@ -395,4 +486,46 @@ func splitPackage(spec string) (name, subpath string) {
 		return parts[0] + "/" + parts[1], strings.Join(parts[2:], "/")
 	}
 	return parts[0], strings.Join(parts[1:], "/")
+}
+
+// tryWorkspace resolves an import of another package in the same monorepo.
+//
+// "@acme/ui" inside a workspace is not a dependency you installed, it is code
+// in the next folder. Treating it as external disconnects the graph exactly
+// where a monorepo is most interesting: at the boundaries between packages.
+func (r *Resolver) tryWorkspace(specifier string) (Result, bool) {
+	if len(r.workspaces) == 0 {
+		return Result{}, false
+	}
+
+	name, subpath := splitPackage(specifier)
+	ws, ok := r.workspaces[name]
+	if !ok {
+		return Result{}, false
+	}
+
+	// A subpath import addresses a file inside the package directly.
+	if subpath != "" {
+		if res, ok := r.tryFile(filepath.Join(ws.Dir, filepath.FromSlash(subpath))); ok {
+			res.Via = "workspace-subpath"
+			return res, true
+		}
+	}
+
+	if ws.Entry != "" {
+		return Result{Kind: ToFile, Path: r.rel(ws.Entry), Via: "workspace"}, true
+	}
+	// A workspace package whose manifest points at a build output that does not
+	// exist yet. Try the conventional source entry before giving up.
+	for _, guess := range []string{"src/index", "index", "src/main"} {
+		if res, ok := r.tryFile(filepath.Join(ws.Dir, filepath.FromSlash(guess))); ok {
+			res.Via = "workspace-guess"
+			return res, true
+		}
+	}
+	return Result{
+		Kind:   Unresolved,
+		Reason: specifier + " is a workspace package but no entry file could be found in " + r.rel(ws.Dir),
+		Via:    "workspace",
+	}, true
 }

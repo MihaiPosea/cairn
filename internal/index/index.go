@@ -25,9 +25,10 @@ import (
 // mismatch the whole cache is discarded, which costs one slow scan and is the
 // only safe answer.
 // Bumped to 2 when the parser learned `import x = require("y")` and stopped
-// truncating specifiers containing escapes. Any cache written before that
-// holds results the current parser would not produce.
-const formatVersion = 2
+// truncating specifiers containing escapes; to 3 when it learned to read
+// .vue, .svelte and .astro. Any cache written earlier holds results the
+// current parser would not produce.
+const formatVersion = 3
 
 // Index is a content-addressed cache of parse results.
 //

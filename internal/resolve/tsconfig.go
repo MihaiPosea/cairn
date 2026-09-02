@@ -8,16 +8,38 @@ import (
 	"strings"
 )
 
-// TSConfig holds the only two things from tsconfig.json that affect where an
-// import points: baseUrl and paths.
+// TSConfig holds the only thing from tsconfig.json that affects where an
+// import points: the path aliases.
 type TSConfig struct {
-	// Dir is the directory the winning config was found in. Relative paths in
-	// baseUrl are resolved against it.
+	// Dir is the directory the winning config was found in.
 	Dir string
-	// BaseURL is an absolute directory, or "" if unset.
-	BaseURL string
-	// Paths maps an alias pattern to candidate targets, e.g. "@/*" -> ["./*"].
-	Paths map[string][]string
+	// Rules are the alias patterns, each carrying its own base directory.
+	Rules []AliasRule
+}
+
+// AliasRule is one `paths` entry together with the directory its targets are
+// relative to.
+//
+// A single baseURL for the whole config is wrong once `extends` is involved.
+// TypeScript resolves `paths` against `baseUrl` when one is declared, and
+// against *the config file that declares the paths* when one is not. With a
+// child extending a parent and neither declaring baseUrl, a single shared
+// baseURL sends the child's aliases to the parent's directory — which is how a
+// monorepo's per-package aliases silently stop resolving.
+type AliasRule struct {
+	Pattern string
+	Targets []string
+	Base    string // absolute directory the targets are relative to
+}
+
+// Paths reports the alias patterns, for callers that only need to know whether
+// any exist.
+func (c *TSConfig) Paths() map[string][]string {
+	out := map[string][]string{}
+	for _, r := range c.Rules {
+		out[r.Pattern] = r.Targets
+	}
+	return out
 }
 
 // LoadTSConfig reads tsconfig.json (or jsconfig.json) from dir and follows its
@@ -29,14 +51,14 @@ func LoadTSConfig(dir string) (*TSConfig, error) {
 	for _, name := range []string{"tsconfig.json", "jsconfig.json"} {
 		p := filepath.Join(dir, name)
 		if _, err := os.Stat(p); err == nil {
-			cfg := &TSConfig{Dir: dir, Paths: map[string][]string{}}
+			cfg := &TSConfig{Dir: dir}
 			if err := loadInto(cfg, p, dir, 0); err != nil {
 				return cfg, err
 			}
 			return cfg, nil
 		}
 	}
-	return &TSConfig{Dir: dir, Paths: map[string][]string{}}, nil
+	return &TSConfig{Dir: dir}, nil
 }
 
 type rawTSConfig struct {
@@ -72,16 +94,28 @@ func loadInto(cfg *TSConfig, path, repoRoot string, depth int) error {
 		}
 	}
 
+	// Each config's aliases carry the base they were declared against.
+	//
+	// TypeScript 5 allows `paths` with no `baseUrl`, in which case targets are
+	// relative to the config file's own directory. Next.js templates ship
+	// exactly that shape, so it is the common case rather than the exotic one.
+	base := filepath.Dir(path)
 	if raw.CompilerOptions.BaseURL != "" {
-		cfg.BaseURL = filepath.Join(filepath.Dir(path), raw.CompilerOptions.BaseURL)
+		base = filepath.Join(filepath.Dir(path), raw.CompilerOptions.BaseURL)
 	}
-	for k, v := range raw.CompilerOptions.Paths {
-		cfg.Paths[k] = v
-		// TypeScript 5 allows `paths` with no `baseUrl`, in which case targets
-		// are relative to the config file's own directory. Next.js templates
-		// ship exactly this shape, so it is the common case, not the exotic one.
-		if cfg.BaseURL == "" {
-			cfg.BaseURL = filepath.Dir(path)
+
+	for pattern, targets := range raw.CompilerOptions.Paths {
+		// A child overrides a parent's rule for the same pattern.
+		replaced := false
+		for i := range cfg.Rules {
+			if cfg.Rules[i].Pattern == pattern {
+				cfg.Rules[i] = AliasRule{Pattern: pattern, Targets: targets, Base: base}
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			cfg.Rules = append(cfg.Rules, AliasRule{Pattern: pattern, Targets: targets, Base: base})
 		}
 	}
 	return nil

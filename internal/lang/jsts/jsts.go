@@ -21,10 +21,20 @@ import (
 )
 
 // Extensions this parser claims.
+//
+// The single-file-component formats are here because their imports are
+// ordinary TypeScript wrapped in markup — see sfc.go. Leaving them out does not
+// produce a partial answer for a Vue or Svelte app, it produces a graph with
+// the components missing entirely, which reads as a working scan of a much
+// smaller project.
 var extensions = map[string]bool{
 	".ts": true, ".tsx": true, ".mts": true, ".cts": true,
 	".js": true, ".jsx": true, ".mjs": true, ".cjs": true,
+	".vue": true, ".svelte": true, ".astro": true,
 }
+
+// sfcExtensions are the formats that embed code in markup.
+var sfcExtensions = map[string]bool{".vue": true, ".svelte": true, ".astro": true}
 
 // Parser implements lang.Parser for JS/TS.
 //
@@ -97,6 +107,30 @@ func (p *Parser) languageFor(path string) *ts.Language {
 
 // Parse walks the syntax tree and collects every import.
 func (p *Parser) Parse(path string, src []byte) ([]lang.RawImport, error) {
+	if ext := strings.ToLower(filepath.Ext(path)); sfcExtensions[ext] {
+		return p.parseSFC(ext, src)
+	}
+	return p.parseCode(path, src, 0)
+}
+
+// parseSFC extracts the embedded code from a single-file component and parses
+// each block, shifting line numbers so they point at the real line in the
+// original file.
+func (p *Parser) parseSFC(ext string, src []byte) ([]lang.RawImport, error) {
+	var out []lang.RawImport
+	for _, block := range extractBlocks(ext, string(src)) {
+		imports, err := p.parseCode("block.ts", []byte(block.code), block.lineOffset)
+		if err != nil {
+			continue // one unparseable block must not lose the others
+		}
+		out = append(out, imports...)
+	}
+	return out, nil
+}
+
+// parseCode parses ordinary JavaScript or TypeScript. lineOffset is added to
+// every reported line, for code extracted from a larger document.
+func (p *Parser) parseCode(path string, src []byte, lineOffset int) ([]lang.RawImport, error) {
 	language := p.languageFor(path)
 	parser := p.borrow(language)
 	defer p.release(language, parser)
@@ -133,6 +167,12 @@ func (p *Parser) Parse(path string, src []byte) ([]lang.RawImport, error) {
 		}
 	}
 	walk(tree.RootNode())
+
+	if lineOffset != 0 {
+		for i := range out {
+			out[i].Line += lineOffset
+		}
+	}
 	return out, nil
 }
 

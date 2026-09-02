@@ -426,3 +426,53 @@ document, with a comment saying why.
 **Concurrency, all under `-race`.** Twelve simultaneous scans of one repo agree node for node and
 leave the shared cache usable. The resolver and the index hold up under sixteen goroutines. And two
 repos containing byte-identical files never share cache entries.
+
+---
+
+## Repo shapes
+
+"Works on any repo" is only worth claiming if it has been checked against the layouts people
+actually have, so there is a fixture for each and the test fails loudly rather than producing a thin
+graph.
+
+| shape | status |
+|---|---|
+| Next.js app router | ✅ |
+| Next.js pages router (baseUrl + paths) | ✅ |
+| Vite / React SPA | ✅ |
+| pnpm / npm / yarn monorepo | ✅ *fixed* |
+| Vue single-file components | ✅ *added* |
+| Svelte | ✅ *added* |
+| Astro | ✅ *added* |
+| Node / CommonJS backend | ✅ |
+| Library with src + dist | ✅ |
+| React Native platform extensions | ✅ *fixed* |
+| Nested per-package tsconfig | ✅ *fixed* |
+
+Four things this found:
+
+**A monorepo produced a graph with no edges at all.** Every cross-package import — `@acme/ui`
+— resolved to an external package instead of the source file in the next folder, and every
+per-package tsconfig alias became a phantom dependency on a package named `@`. Measured on a
+three-package fixture: three file nodes, zero edges. That is worse than an error, because it looks
+like a working answer for a small project. Fixed by discovering workspaces from `package.json`
+`workspaces` and `pnpm-workspace.yaml`, and by resolving aliases against the tsconfig *nearest the
+importing file*.
+
+**`extends` broke per-package aliases.** A single `baseURL` per config is wrong: TypeScript resolves
+`paths` against `baseUrl` when one is declared and against *the config file that declares the paths*
+when one is not. With a child extending a parent and neither declaring `baseUrl`, a shared base sent
+the child's aliases to the parent's directory. Each alias rule now carries its own base.
+
+**Vue, Svelte and Astro were invisible.** Not partially handled — the file types were skipped
+outright, so a Vue app scanned as a handful of `.ts` utilities with no components, which reads as a
+working scan of a much smaller project. Their imports are ordinary TypeScript wrapped in markup, so
+the blocks are extracted and handed to the same grammar, with line offsets preserved so a reported
+line points at the real line in the `.vue` file.
+
+Rejected: adding three more tree-sitter grammars. One parser to keep correct beats four, and the
+code inside a `<script>` really is just TypeScript.
+
+**React Native platform extensions.** `./Button` resolving to `Button.ios.tsx` — every
+platform-split component in an RN app was an unresolved import. Tried after the plain ladder so an
+unqualified file always wins, which is what a bundler does too.
