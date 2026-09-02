@@ -39,9 +39,9 @@ type Node struct {
 	// Bytes is installed size for packages.
 	Bytes int64 `json:"bytes,omitempty"`
 	// Note carries an entry-point reason or a dead-file warning.
-	Note string `json:"note,omitempty"`
-	Dead bool   `json:"dead,omitempty"`
-	Entry bool  `json:"entry,omitempty"`
+	Note  string `json:"note,omitempty"`
+	Dead  bool   `json:"dead,omitempty"`
+	Entry bool   `json:"entry,omitempty"`
 }
 
 // Edge is one edge as the page sees it.
@@ -56,13 +56,13 @@ type Edge struct {
 // Payload is everything the page needs. It is embedded in the HTML, which is
 // what makes the exported file work with no server.
 type Payload struct {
-	Root      string            `json:"root"`
-	Nodes     []Node            `json:"nodes"`
-	Edges     []Edge            `json:"edges"`
-	Stats     map[string]any    `json:"stats"`
-	Truncated int               `json:"truncated"`
-	Rules     map[string]int    `json:"rules"`
-	Warnings  []string          `json:"warnings"`
+	Root      string         `json:"root"`
+	Nodes     []Node         `json:"nodes"`
+	Edges     []Edge         `json:"edges"`
+	Stats     map[string]any `json:"stats"`
+	Truncated int            `json:"truncated"`
+	Rules     map[string]int `json:"rules"`
+	Warnings  []string       `json:"warnings"`
 }
 
 // maxNodes caps what is drawn.
@@ -103,12 +103,13 @@ func Build(res *scan.Result, includePackages bool) *Payload {
 		ids = ids[:maxNodes]
 	}
 
+	deadRep := query.DeadFilesWith(g, res.ManifestEntries, len(res.Unanalyzable) > 0)
 	entries := map[string]string{}
-	for _, e := range query.EntryPoints(g) {
+	for _, e := range deadRep.Entries {
 		entries[e.File] = e.Reason
 	}
 	dead := map[string]string{}
-	for _, d := range query.DeadFiles(g, len(res.Unanalyzable) > 0) {
+	for _, d := range deadRep.Files {
 		dead[d.File] = d.Why
 	}
 

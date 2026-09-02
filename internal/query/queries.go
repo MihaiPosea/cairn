@@ -60,10 +60,28 @@ type EntryPoint struct {
 // is trivial; knowing where to start is not, and getting it wrong means
 // declaring half a Next.js app dead because nothing "imports" a page.
 func EntryPoints(g *graph.Graph) []EntryPoint {
+	return EntryPointsWith(g, nil)
+}
+
+// EntryPointsWith adds paths declared by the repo's own package.json —
+// main, module, exports, bin — to the ones recognised by convention.
+//
+// Without them a library has no entry points at all, and every file in it is
+// unreachable. See DeadReport.Bail.
+func EntryPointsWith(g *graph.Graph, manifest []string) []EntryPoint {
+	declared := map[string]bool{}
+	for _, p := range manifest {
+		declared[p] = true
+	}
+
 	var out []EntryPoint
 	for _, id := range g.IDs() {
 		n := g.Nodes[id]
 		if n.Kind != graph.File {
+			continue
+		}
+		if declared[n.Path] {
+			out = append(out, EntryPoint{File: id, Reason: "declared in package.json"})
 			continue
 		}
 		if reason := entryReason(n.Path); reason != "" {
@@ -112,14 +130,49 @@ func entryReason(p string) string {
 	return ""
 }
 
+// DeadReport is the outcome of a dead-file analysis.
+type DeadReport struct {
+	Files   []Dead
+	Entries []EntryPoint
+	// Bail is set when the result must not be trusted. When it is non-empty,
+	// Files is empty regardless of what the traversal found.
+	Bail string
+}
+
 // DeadFiles returns files no entry point can reach.
 //
-// Follows every edge kind: a file imported only for its types is not dead,
-// because removing it breaks the build. Files with unanalyzable dynamic
-// imports anywhere in the repo are reported with lowered confidence, since a
-// computed import() could be loading exactly them.
+// Kept for callers that already know their entry points are sound.
 func DeadFiles(g *graph.Graph, hasUnanalyzableImports bool) []Dead {
-	entries := EntryPoints(g)
+	return DeadFilesWith(g, nil, hasUnanalyzableImports).Files
+}
+
+// DeadFilesWith runs the analysis with manifest-declared entry points.
+//
+// It refuses to answer when no entry point exists at all. Reachability from an
+// empty root set marks every file dead, and "delete your entire codebase" is
+// never a useful answer — it is the failure mode that would make this tool
+// dangerous rather than merely wrong.
+func DeadFilesWith(g *graph.Graph, manifest []string, hasUnanalyzableImports bool) *DeadReport {
+	entries := EntryPointsWith(g, manifest)
+
+	files := 0
+	for _, id := range g.IDs() {
+		if g.Nodes[id].Kind == graph.File {
+			files++
+		}
+	}
+	if len(entries) == 0 && files > 0 {
+		return &DeadReport{Bail: "no entry points found — nothing here matches a framework convention " +
+			"and package.json declares no main, module, exports or bin, so every file would be " +
+			"reported dead. Add an entry point or ignore this result."}
+	}
+
+	rep := &DeadReport{Entries: entries}
+	rep.Files = deadFrom(g, entries, hasUnanalyzableImports)
+	return rep
+}
+
+func deadFrom(g *graph.Graph, entries []EntryPoint, hasUnanalyzableImports bool) []Dead {
 	roots := make([]string, 0, len(entries))
 	for _, e := range entries {
 		roots = append(roots, e.File)

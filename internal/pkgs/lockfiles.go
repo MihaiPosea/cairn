@@ -169,11 +169,27 @@ func splitPnpmKey(key string) (name, version string) {
 	if i := strings.Index(k, "("); i >= 0 {
 		k = k[:i] // drop the peer-dependency suffix
 	}
-	at := strings.LastIndex(k, "@")
-	if at <= 0 {
-		return k, ""
+	return splitNameVersion(k)
+}
+
+// splitNameVersion separates a package name from whatever follows it.
+//
+// Splitting at the *last* "@" looks right and is wrong for aliased
+// dependencies: "lodash-es@npm:lodash@^4.0.0" yields "lodash-es@npm:lodash",
+// a name nothing imports, so the package never joins to the code that uses it.
+// The name is everything before the first "@" that is not the scope marker.
+func splitNameVersion(s string) (name, version string) {
+	search := s
+	offset := 0
+	if strings.HasPrefix(s, "@") {
+		search = s[1:] // the leading @ is a scope, not a separator
+		offset = 1
 	}
-	return k[:at], k[at+1:]
+	at := strings.Index(search, "@")
+	if at < 0 {
+		return s, ""
+	}
+	return s[:offset+at], s[offset+at+1:]
 }
 
 // ── yarn ────────────────────────────────────────────────────────────────────
@@ -279,15 +295,12 @@ func loadYarnClassic(data []byte) (*Graph, error) {
 	return g, nil
 }
 
-// yarnDescriptorName strips the version range from "react@^18.0.0" or
-// "@scope/pkg@npm:^1.0.0", leaving the package name.
+// yarnDescriptorName strips the range from "react@^18.0.0",
+// "@scope/pkg@npm:^1.0.0", or an alias like "lodash-es@npm:lodash@^4.0.0",
+// leaving the name the code actually imports.
 func yarnDescriptorName(desc string) string {
-	d := strings.Trim(desc, `"`)
-	at := strings.LastIndex(d, "@")
-	if at <= 0 {
-		return d
-	}
-	return d[:at]
+	name, _ := splitNameVersion(strings.Trim(desc, `"`))
+	return name
 }
 
 // ── node_modules ────────────────────────────────────────────────────────────

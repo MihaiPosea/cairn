@@ -113,9 +113,12 @@ func Load(root string) (*Graph, error) {
 			readDeclared(root, g)
 			return g, nil
 		}
-		// A lockfile we cannot read is worth saying out loud, then we fall
+		// A lockfile we cannot use is worth saying out loud, then we fall
 		// through to reading the directory instead of failing the scan.
-		g2 := newGraph("node_modules (unreadable " + s.file + ")")
+		// "cannot use" rather than "unreadable": an npm v1 lockfile parses
+		// perfectly and simply has no packages map, and calling that
+		// unreadable sends people looking for a corrupt file.
+		g2 := newGraph("node_modules (could not use " + s.file + ")")
 		if err != nil {
 			g2.Warnings = append(g2.Warnings, s.file+": "+err.Error())
 		}

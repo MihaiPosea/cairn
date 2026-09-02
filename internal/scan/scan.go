@@ -78,6 +78,10 @@ type Result struct {
 	// CacheHits and CacheMisses count files served from the parse cache.
 	CacheHits, CacheMisses int
 
+	// ManifestEntries are entry points declared by the repo's own
+	// package.json, which is the only signal a library gives.
+	ManifestEntries []string
+
 	// ResolvedVia counts how many specifiers each resolution rule handled.
 	//
 	// This is what makes a verification score mean something. A repo whose
@@ -147,12 +151,15 @@ func RunWith(dir string, opts Options) (*Result, error) {
 		ix = index.Open(root)
 	}
 
+	res0Manifest := pkgs.ManifestEntries(root)
+
 	res := &Result{
-		Graph:         graph.New(),
-		Root:          root,
-		FilesScanned:  len(files),
-		AliasesLoaded: resolver.HasAliases(),
-		ResolvedVia:   map[string]int{},
+		Graph:           graph.New(),
+		Root:            root,
+		FilesScanned:    len(files),
+		AliasesLoaded:   resolver.HasAliases(),
+		ResolvedVia:     map[string]int{},
+		ManifestEntries: res0Manifest,
 	}
 
 	// Every file becomes a node before any edge is added, so an edge can never

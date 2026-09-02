@@ -325,3 +325,55 @@ ways no import graph can see.
 **A bug found by using it.** The first real run reported `.cairn/parse-cache.gob` as a changed file
 and bailed on cairn's own artifact. Fixed by writing `.gitignore` containing `*` inside the cache
 directory, so it ignores itself rather than editing the user's `.gitignore`.
+
+---
+
+## Bug hunt
+
+Eight bugs found by writing adversarial fixtures for cases real repos contain and the happy-path
+tests never touched. Listed by how much damage each would have done.
+
+**1. A library's entire contents reported as dead.**
+Entry-point detection recognised framework conventions and nothing else. A published package's only
+signal is its `package.json` — `main`, `module`, `exports`, `bin` — which was never read, so nothing
+was an entry point, so every file was unreachable. The tool would have advised deleting the whole
+codebase. Fixed by reading the manifest, and by refusing to answer at all when there are zero entry
+points: reachability from an empty root set marks everything dead, and that is never a useful answer.
+
+**2. Case-mismatched imports created phantom nodes.**
+`import "./Utils"` when the file is `utils.ts` resolved through `os.Stat`, which is case-insensitive
+on macOS and Windows. That produced a *second* node for the same file: the real one lost its inbound
+edges, so it looked dead with a blast radius of zero, while the phantom took its place. It also hid
+a bug that only surfaces on Linux CI. Fixed by replacing stat-per-candidate with cached directory
+listings, which are case-exact — and 20% faster, since the ladder tries nine extensions per import
+and one listing amortises across all of them. Mismatches are now reported.
+
+**3. Imports escaping the repository root** created nodes with `../` paths that every traversal then
+treated as project files.
+
+**4. Bundler resource queries did not resolve.** `./shader.glsl?raw`, `./worker?worker`,
+`./icon.svg#frag` — common in Vite and webpack, and silently inflating the unresolved rate.
+
+**5. `import x = require("y")` was not extracted at all.** TypeScript's import-equals form nests its
+string inside an `import_require_clause` rather than hanging it off the statement, so the
+direct-child lookup missed it. Still common in older TypeScript and throughout `.d.ts` files.
+
+**6. Specifiers containing escapes were truncated.** `"./with space"` became `"./with"` and then
+failed to resolve for no visible reason — tree-sitter splits such a string into
+fragment/escape/fragment and only the first was read.
+
+**7. Aliased dependencies got the wrong name.** `"lodash-es": "npm:lodash@^4"` was keyed as
+`lodash-es@npm:lodash`, a name nothing imports, so the package never joined to the code using it.
+Splitting at the *last* `@` looks right and is wrong; the name ends at the first `@` that is not a
+scope marker.
+
+**8. "Unreadable lockfile" was the wrong words** for an npm v1 lockfile, which parses perfectly and
+simply has no `packages` map. It sent people looking for a corrupt file.
+
+Confirmed correct and left alone: BOMs, CRLF line numbers, empty and binary files, import
+attributes, JSX in `.js`, decorators, 200 KB lines, dotted directory names, symlinked sources,
+self-imports, circular package dependencies, malformed lockfiles of every format, and scoped names
+across all four.
+
+One known false positive is recorded rather than fixed: `require` shadowed by a local parameter is
+still treated as a module import, because cairn does no scope analysis.

@@ -229,18 +229,25 @@ func runBlast(res *scan.Result, target string, asJSON bool) error {
 // ── dead ────────────────────────────────────────────────────────────────────
 
 func runDead(res *scan.Result, asJSON bool) error {
-	dead := query.DeadFiles(res.Graph, len(res.Unanalyzable) > 0)
-	entries := query.EntryPoints(res.Graph)
+	rep := query.DeadFilesWith(res.Graph, res.ManifestEntries, len(res.Unanalyzable) > 0)
+	dead, entries := rep.Files, rep.Entries
 
 	if asJSON {
 		list := make([]map[string]string, 0, len(dead))
 		for _, d := range dead {
 			list = append(list, map[string]string{"file": short(d.File), "why": d.Why})
 		}
-		return emit(map[string]any{"dead": list, "entry_points": len(entries), "count": len(dead)})
+		return emit(map[string]any{
+			"dead": list, "entry_points": len(entries), "count": len(dead), "bail": rep.Bail,
+		})
 	}
 
 	fmt.Printf("%s\n\n", res.Root)
+	if rep.Bail != "" {
+		fmt.Println("  cannot answer")
+		fmt.Printf("      %s\n", rep.Bail)
+		return nil
+	}
 	fmt.Printf("  %d entry points found\n", len(entries))
 	for i, e := range entries {
 		if i == 6 {
