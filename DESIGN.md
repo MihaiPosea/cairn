@@ -370,6 +370,12 @@ scope marker.
 **8. "Unreadable lockfile" was the wrong words** for an npm v1 lockfile, which parses perfectly and
 simply has no `packages` map. It sent people looking for a corrupt file.
 
+**9 and 10. A typo'd path scanned "successfully".**
+`filepath.WalkDir` reports a missing root through the callback, which ignores errors so that one
+unreadable subdirectory cannot abort a whole scan. The consequence was that `cairn scan /typo/path`
+printed "0 files, 0 imports, 0% unresolved" and exited 0 — indistinguishable from a clean scan of a
+real repo. Same for passing a file instead of a directory. Both now fail before the walk starts.
+
 Confirmed correct and left alone: BOMs, CRLF line numbers, empty and binary files, import
 attributes, JSX in `.js`, decorators, 200 KB lines, dotted directory names, symlinked sources,
 self-imports, circular package dependencies, malformed lockfiles of every format, and scoped names

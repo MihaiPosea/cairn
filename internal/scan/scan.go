@@ -8,6 +8,7 @@
 package scan
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -134,6 +135,21 @@ func RunWith(dir string, opts Options) (*Result, error) {
 	root, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
+	}
+
+	// Validate the root before walking it.
+	//
+	// filepath.WalkDir reports a missing root through the callback, which
+	// ignores errors so an unreadable subdirectory cannot abort a scan. The
+	// result was that a typo'd path produced "0 files, 0 imports, 0%
+	// unresolved" and exit status 0 — indistinguishable from a clean scan of a
+	// real repo, which is the worst way to be wrong.
+	info, err := os.Stat(root)
+	if err != nil {
+		return nil, fmt.Errorf("cannot scan %s: %w", root, err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("cannot scan %s: it is a file, not a directory", root)
 	}
 
 	resolver, cfgErr := resolve.New(root)
