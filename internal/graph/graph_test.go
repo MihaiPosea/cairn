@@ -169,3 +169,71 @@ func TestAddNodeIsIdempotent(t *testing.T) {
 		t.Errorf("Order has %d entries, want 1", len(g.Order))
 	}
 }
+
+// A duplicate edge must not create a permanent deficit that looks like a cycle.
+func TestTopoOrderHandlesDuplicateEdges(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: NodeID(File, "a.ts"), Kind: File, Path: "a.ts"})
+	g.AddNode(&Node{ID: NodeID(File, "b.ts"), Kind: File, Path: "b.ts"})
+	// The same file imported on two lines produces two edges.
+	for _, line := range []int{3, 7} {
+		if err := g.AddEdge(Edge{From: NodeID(File, "a.ts"), To: NodeID(File, "b.ts"), Kind: Import, Line: line}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	order, err := g.TopoOrder()
+	if err != nil {
+		t.Fatalf("duplicate edges should not look like a cycle: %v", err)
+	}
+	if len(order) != 2 || order[0].ID != NodeID(File, "b.ts") {
+		t.Errorf("order = %v, want b.ts then a.ts", order)
+	}
+}
+
+// The reported cycle must be stable across runs.
+func TestCycleErrorIsDeterministic(t *testing.T) {
+	var first string
+	for run := 0; run < 20; run++ {
+		g := build(t,
+			[]string{"a.ts", "b.ts", "c.ts", "d.ts"},
+			map[string][]string{
+				"a.ts": {"b.ts"},
+				"b.ts": {"c.ts"},
+				"c.ts": {"a.ts"},
+				"d.ts": {"a.ts"},
+			})
+		_, err := g.TopoOrder()
+		if err == nil {
+			t.Fatal("expected a cycle")
+		}
+		if run == 0 {
+			first = err.Error()
+		} else if err.Error() != first {
+			t.Fatalf("run %d reported %q, first run reported %q", run, err.Error(), first)
+		}
+	}
+	t.Logf("stable cycle report: %s", first)
+}
+
+// A cycle deep inside a long chain must not overflow the stack.
+func TestFindCycleSurvivesADeepChain(t *testing.T) {
+	const depth = 40000
+	g := New()
+	id := func(i int) string { return NodeID(File, "f"+itoa(i)+".ts") }
+	for i := 0; i < depth; i++ {
+		g.AddNode(&Node{ID: id(i), Kind: File, Path: "f" + itoa(i) + ".ts"})
+	}
+	for i := 0; i < depth-1; i++ {
+		g.AddEdge(Edge{From: id(i), To: id(i + 1), Kind: Import})
+	}
+	g.AddEdge(Edge{From: id(depth - 1), To: id(0), Kind: Import}) // close the loop
+
+	_, err := g.TopoOrder()
+	var ce *CycleError
+	if !errors.As(err, &ce) {
+		t.Fatalf("expected a CycleError, got %v", err)
+	}
+	if len(ce.Path) != depth+1 {
+		t.Errorf("cycle path has %d nodes, want %d", len(ce.Path), depth+1)
+	}
+}

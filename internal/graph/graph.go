@@ -7,8 +7,10 @@
 package graph
 
 import (
+	"container/heap"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -220,46 +222,163 @@ func (g *Graph) SortedIDs() []string {
 // everything it depends on. If the graph contains a cycle it returns a
 // *CycleError naming the loop.
 //
-// ─── YOUR TASK ──────────────────────────────────────────────────────────────
+// Kahn's algorithm rather than depth-first search: the counting structure here
+// is exactly what a concurrent scheduler needs, and "whatever is left over is
+// in a cycle" falls out of it for free.
 //
-// Implement Kahn's algorithm. Not depth-first search — Kahn's, because the
-// same counting structure is what a concurrent scheduler needs, and because
-// it makes the "what's left over is a cycle" step fall out naturally.
-//
-//  1. Count each node's unmet dependencies (its "in-degree" in dependency
-//     terms): how many edges leave it via g.Dependencies.
-//
-//  2. Collect every node with a count of zero into a ready list, walking
-//     g.Order so the result is deterministic.
-//
-//  3. Repeatedly: take the first ready node, append it to the result, then for
-//     each node that depends on it (g.Dependents) decrement that node's count.
-//     Any node reaching zero joins the ready list, inserted so the list stays
-//     in g.Order sequence.
-//
-//  4. When the ready list empties: if you emitted every node, you're done. If
-//     nodes remain, each is stuck waiting on something — they are in, or
-//     downstream of, a cycle.
-//
-// ─── THE PART WORTH DOING PROPERLY ──────────────────────────────────────────
-//
-// Step 4 tells you a cycle exists but not what it is, and "cycle detected" is
-// a useless error. To name the loop, walk the remaining nodes depth-first,
-// keeping a stack of the path you took. When you reach a node already on the
-// current stack, the loop is the slice of the stack from that node onward,
-// plus that node again at the end. Return it as a *CycleError.
-//
-// ─── A NOTE FOR LATER ───────────────────────────────────────────────────────
-//
-// Treating a cycle as an error is right for a build graph, where a cycle means
-// nothing can start. It is *wrong* for an import graph — JavaScript permits
-// circular imports and real repos are full of them. At M4 this gets replaced
-// by condensing each strongly-connected component into a single node and
-// ordering the condensation, so cycles become a finding rather than a failure.
-// Build the erroring version first; you need it to understand why the other
-// one is necessary.
-//
-// Test with: go test ./internal/graph/
+// Note that treating a cycle as an error is right for a build graph, where a
+// cycle means nothing can start. It is wrong for an import graph — JavaScript
+// permits circular imports and real repos are full of them — which is why
+// query.Cycles reports them as findings instead. Both exist on purpose.
 func (g *Graph) TopoOrder() ([]*Node, error) {
-	return nil, fmt.Errorf("TopoOrder: not implemented yet — this is your task")
+	// Distinct targets, not edge count. A file that imports the same module on
+	// two lines produces two edges, and counting both would leave a permanent
+	// deficit that looks exactly like a cycle.
+	deps := make(map[string]map[string]bool, len(g.Nodes))
+	dependents := make(map[string]map[string]bool, len(g.Nodes))
+	for _, id := range g.Order {
+		for _, e := range g.out[id] {
+			if deps[id] == nil {
+				deps[id] = map[string]bool{}
+			}
+			if dependents[e.To] == nil {
+				dependents[e.To] = map[string]bool{}
+			}
+			deps[id][e.To] = true
+			dependents[e.To][id] = true
+		}
+	}
+
+	// Position in insertion order, so ties break deterministically.
+	pos := make(map[string]int, len(g.Order))
+	for i, id := range g.Order {
+		pos[id] = i
+	}
+
+	remaining := make(map[string]int, len(g.Order))
+	ready := &posHeap{pos: pos}
+	for _, id := range g.Order {
+		n := len(deps[id])
+		remaining[id] = n
+		if n == 0 {
+			heap.Push(ready, id)
+		}
+	}
+
+	out := make([]*Node, 0, len(g.Order))
+	for ready.Len() > 0 {
+		id := heap.Pop(ready).(string)
+		out = append(out, g.Nodes[id])
+		delete(remaining, id)
+
+		for dep := range dependents[id] {
+			remaining[dep]--
+			if remaining[dep] == 0 {
+				heap.Push(ready, dep)
+			}
+		}
+	}
+
+	if len(out) != len(g.Order) {
+		return nil, &CycleError{Path: findCycle(g, remaining)}
+	}
+	return out, nil
 }
+
+// findCycle names a loop among the nodes Kahn's algorithm could not drain.
+//
+// Kahn's tells you a cycle exists but not what it is, and "cycle detected" is
+// a useless error message. Every stuck node is in or downstream of a cycle, so
+// a depth-first walk restricted to stuck nodes, carrying the path it took,
+// finds one: reaching a node already on the current path closes the loop.
+//
+// Iterative rather than recursive — a deep chain would overflow the stack, and
+// this runs on repos with tens of thousands of files.
+func findCycle(g *Graph, stuck map[string]int) []string {
+	inStuck := func(id string) bool { _, ok := stuck[id]; return ok }
+
+	// Walk in insertion order so the reported cycle is deterministic.
+	for _, start := range g.Order {
+		if !inStuck(start) {
+			continue
+		}
+
+		type frame struct {
+			node string
+			edge int
+		}
+		var path []string
+		onPath := map[string]bool{}
+		stack := []frame{{node: start}}
+		path = append(path, start)
+		onPath[start] = true
+
+		for len(stack) > 0 {
+			f := &stack[len(stack)-1]
+			edges := g.out[f.node]
+
+			descended := false
+			for f.edge < len(edges) {
+				to := edges[f.edge].To
+				f.edge++
+				if !inStuck(to) {
+					continue
+				}
+				if onPath[to] {
+					// Found it: the loop is the tail of the path from `to`.
+					for i, id := range path {
+						if id == to {
+							return append(append([]string{}, path[i:]...), to)
+						}
+					}
+				}
+				if visitedThisWalk(path, to) {
+					continue
+				}
+				stack = append(stack, frame{node: to})
+				path = append(path, to)
+				onPath[to] = true
+				descended = true
+				break
+			}
+			if descended {
+				continue
+			}
+			onPath[f.node] = false
+			path = path[:len(path)-1]
+			stack = stack[:len(stack)-1]
+		}
+	}
+	// Unreachable for a genuinely stuck graph, but never return an empty loop.
+	return []string{"<cycle among " + itoa(len(stuck)) + " nodes>"}
+}
+
+func visitedThisWalk(path []string, id string) bool {
+	for _, p := range path {
+		if p == id {
+			return true
+		}
+	}
+	return false
+}
+
+// posHeap pops node IDs in insertion order, which is what makes two runs of
+// TopoOrder over an unchanged graph produce identical output.
+type posHeap struct {
+	ids []string
+	pos map[string]int
+}
+
+func (h *posHeap) Len() int           { return len(h.ids) }
+func (h *posHeap) Less(i, j int) bool { return h.pos[h.ids[i]] < h.pos[h.ids[j]] }
+func (h *posHeap) Swap(i, j int)      { h.ids[i], h.ids[j] = h.ids[j], h.ids[i] }
+func (h *posHeap) Push(x any)         { h.ids = append(h.ids, x.(string)) }
+func (h *posHeap) Pop() any {
+	old := h.ids
+	n := len(old)
+	x := old[n-1]
+	h.ids = old[:n-1]
+	return x
+}
+
+func itoa(i int) string { return strconv.Itoa(i) }
