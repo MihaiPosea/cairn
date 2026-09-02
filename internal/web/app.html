@@ -372,6 +372,31 @@ function packChildren(kids) {
   return { w: Math.max(0, x - LAYER_GAP), h: maxH, cols };
 }
 
+// The numbered columns along the top.
+//
+// These used to come from the top-level packing, which knows only about the
+// nine root folders — one head, labelled "1", stretched across the whole
+// graph. The columns a reader actually sees are produced by the nested packing
+// inside every open folder, and that result was thrown away.
+//
+// So derive them from where the boxes finally landed. Every box at the same x
+// is one column, and x is monotonic in dependency depth (checked on excalidraw:
+// 136 depth pairs, zero inversions), so numbering the columns left to right
+// numbers them in dependency order — which is the whole point of the label.
+function columnsOf(boxes) {
+  const at = new Map();
+  for (const b of boxes) {
+    // An open folder is a backdrop spanning all its children, not a column of
+    // its own — counting it produced a "column" 5,768px wide.
+    if (isOpen(b)) continue;
+    const x = Math.round(b.x);
+    const c = at.get(x);
+    if (c) { c.n++; c.w = Math.max(c.w, b.bw); c.depth = Math.min(c.depth, b.depth); }
+    else at.set(x, { x, w: b.bw, n: 1, depth: b.depth });
+  }
+  return [...at.values()].sort((a, b) => a.x - b.x);
+}
+
 function placeBox(x, ax, ay, out) {
   x.x = ax; x.y = ay;
   out.push(x);
@@ -405,7 +430,7 @@ function relayout() {
   }
 
   view = { boxes, edges: [...agg.values()], width: b.w, height: b.h,
-           layers: b.cols, index: new Map(boxes.map(x => [x.id, x])) };
+           layers: columnsOf(boxes), index: new Map(boxes.map(x => [x.id, x])) };
   for (const x of boxes) x.text = undefined;
   refreshChips();
 }
@@ -547,10 +572,11 @@ function drawLayerHeads() {
     if (s > 0.42) {
       ctx.font = '12px "Geist", ui-sans-serif, sans-serif';
       ctx.fillStyle = C.inkFaint;
-      const caption = i === 0
-        ? 'nothing imports these'
-        : i === 1 ? 'imported by column 1' : `${i} imports deep`;
-      ctx.fillText(caption + '  ·  ' + l.n, l.x + ctx.measureText(num).width + 12, y);
+      const caption = i === 0 ? 'nothing imports these'
+        : i === L.length - 1 ? 'imported, imports nothing here'
+        : 'imported by column ' + i;
+      ctx.fillText(l.n + (l.n === 1 ? ' item  ·  ' : ' items  ·  ') + caption,
+                   l.x + ctx.measureText(num).width + 12, y);
     }
   }
   ctx.textBaseline = 'middle';
@@ -957,14 +983,26 @@ function frameSelection(id) {
 
   const pad = 70;
   const w = r - l + pad * 2, h = b - t + pad * 2;
-  // Zoomed out far enough to include the neighbours, but never so far that the
-  // labels stop being readable — past that point framing has cost more than it
-  // gave.
-  let ns = Math.min(VW / w, VH / h, 1.1);
-  if (n === 0) ns = Math.max(s, 0.7);
-  ns = Math.max(ns, 0.32);
 
-  moveTo(VW / 2 - (l + r) / 2 * ns, VH / 2 - (t + b) / 2 * ns, ns, 380);
+  // Readability wins over completeness. A central file's neighbours can span
+  // the entire layout, and fitting all of them put the whole graph on screen at
+  // 0.22 — every label a grey smudge, which answers nothing. Below this floor,
+  // frame the selection itself and let the edges run off-screen: they point the
+  // right way, and the panel names every one of them with its import line.
+  const FLOOR = 0.75;
+  let ns = Math.min(VW / w, VH / h, 1.1);
+
+  let cx = (l + r) / 2, cy = (t + b) / 2;
+  if (n === 0 || ns < FLOOR) {
+    ns = Math.max(ns, FLOOR);
+    // Bias toward the selection rather than the neighbour cloud's centre,
+    // keeping a little of the surroundings on the side the neighbours are on.
+    const mx = me.x + me.bw / 2, my = me.y + me.bh / 2;
+    cx = mx + Math.max(-VW / 3 / ns, Math.min(VW / 3 / ns, cx - mx));
+    cy = my + Math.max(-VH / 3 / ns, Math.min(VH / 3 / ns, cy - my));
+  }
+
+  moveTo(VW / 2 - cx * ns, VH / 2 - cy * ns, ns, 380);
 }
 
 // ── panel ───────────────────────────────────────────────────────────────────
