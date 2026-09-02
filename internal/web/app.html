@@ -133,10 +133,40 @@
   button:hover { border-color:var(--accent); color:var(--accent); }
 
   #chips {
-    display:none; gap:7px; align-items:center; flex-wrap:wrap;
+    display:flex; gap:4px; align-items:center; flex-wrap:wrap;
     padding:9px 22px; border-bottom:1px solid var(--rule); background:var(--surface-2);
     flex-shrink:0;
   }
+  .crumb {
+    font:12px var(--font-mono); padding:3px 8px; border:1px solid transparent;
+    border-radius:var(--radius-sm); background:none; color:var(--ink-2);
+  }
+  .crumb:last-of-type { color:var(--ink); font-weight:500; }
+  .crumb:hover { background:var(--surface); border-color:var(--rule-strong); color:var(--accent); }
+  #chips .sep { color:var(--ink-faint); font:12px var(--font-mono); }
+  .crumb-count { margin-left:auto; font:11.5px var(--font-mono); color:var(--ink-faint); }
+
+  .rail {
+    width:clamp(148px,13vw,196px); flex-shrink:0; overflow-y:auto;
+    background:var(--surface); padding:14px 12px 30px;
+  }
+  #rail-in  { border-right:1px solid var(--rule); }
+  #rail-out { border-left:1px solid var(--rule); }
+  .rail h4 { font:550 10.5px/1 var(--font-sans); letter-spacing:0.06em;
+             text-transform:uppercase; color:var(--ink-faint); margin:0 0 9px 4px; }
+  .rail-none { font:11.5px var(--font-mono); color:var(--ink-faint); margin:0 0 0 4px; }
+  .rail-item {
+    display:flex; width:100%; gap:6px; align-items:baseline; text-align:left;
+    font:11.5px var(--font-mono); padding:4px 5px; margin-bottom:1px;
+    border:none; border-left:2px solid var(--in); border-radius:0 var(--radius-sm) var(--radius-sm) 0;
+    background:none; color:var(--ink-2);
+  }
+  .rail-item.out { border-left-color:var(--out); }
+  .rail-item:hover { background:var(--surface-2); color:var(--accent); }
+  .rail-item .rl { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .rail-item .rn { margin-left:auto; color:var(--ink-faint); font-variant-numeric:tabular-nums; }
+  .rail-item.dim { opacity:0.34; }
+  .rail-item.hot { background:var(--surface-2); color:var(--ink); font-weight:500; }
   .chips-label { font:11px var(--font-sans); color:var(--ink-faint);
                  letter-spacing:0.04em; text-transform:uppercase; margin-right:3px; }
   .chip {
@@ -189,11 +219,13 @@
 </header>
 <div id="chips"></div>
 <main>
+  <div class="rail" id="rail-in"></div>
   <div id="stage"><canvas id="c"></canvas><canvas id="mini"></canvas>
     <div id="code"><header><button class="chip" id="codeclose">✕ close</button>
       <span class="path" id="codepath"></span></header>
       <div class="body" id="codebody"></div></div>
   </div>
+  <div class="rail" id="rail-out"></div>
   <aside id="panel"></aside>
 </main>
 <div class="legend">
@@ -201,7 +233,7 @@
   <span><i class="sw"></i>file</span>
   <span><i class="sw pkg"></i>package</span>
   <span><i class="sw dead"></i>nothing reaches it</span>
-  <span class="hint" id="hint">drag to pan · scroll to zoom · click a node</span>
+  <span class="hint" id="hint">click a folder to go in · breadcrumb to come back · f fit</span>
 </div>
 
 <script>
@@ -216,6 +248,13 @@ const DATA = {{.Data}};
 // reading a breadcrumb.
 
 const NW = 236, NH = 24, HGAP = 34, VGAP = 12;
+// Below this many unconnected children it is not worth hiding them; they cost
+// less on screen than the box explaining where they went.
+const QUIET_MIN = 12;
+// Past this many lines a level stops being a picture of anything. Excalidraw's
+// components/ holds 362, and 362 strokes say strictly less than none plus a
+// sentence saying how many there are. Selection still draws its own.
+const EDGE_LIMIT = 120;
 const PAD = 16, HEADER = 26;      // container padding and title bar
 const LAYER_GAP = 72;
 
@@ -276,45 +315,121 @@ for (const n of files) if (!n.parent) rootIds.push(n.id);
 function item(id) { return groups.get(id) || byId.get(id); }
 function childIds(g) { return [...g.kidIds, ...g.leaves]; }
 
-// ── open set ────────────────────────────────────────────────────────────────
-const expanded = new Set();
+// ── scope ──────────────────────────────────────────────────────────────────
+//
+// The reader is always inside exactly one container, and only its immediate
+// children are drawn. Everything else — however much of it there is — is not
+// on the screen at all.
+//
+// The previous model was an open set: folders could be expanded anywhere, and
+// the whole repository stayed laid out around whatever was open. Drilling in
+// added detail and never removed any. On excalidraw the default view was 66
+// boxes and 301 edges; opening five nested folders reached 268 boxes and 1,159
+// edges across a canvas 15,084 pixels wide. Someone who opened a folder to
+// read four files got 1,159 lines across the screen.
+//
+// Scoping is what puts a ceiling on the picture. It costs the containers that
+// used to show where you were, so a breadcrumb does that job now.
 
-function repOf(id) {
-  const chain = [];
-  for (let p = item(id).parent; p; p = item(p).parent) chain.push(p);
-  chain.reverse();
-  for (const g of chain) if (!expanded.has(g)) return g;
-  return id;
+let focus = [];                       // path segments; [] is the repository
+
+function focusPath() { return focus.length ? focus.join('/') + '/' : ''; }
+function focusItem() { return focus.length ? groupFor(focus) : null; }
+
+// The module a node belongs to, for the root scope.
+const moduleOf = DATA.moduleOf || {};
+function moduleIdOf(nodeId) {
+  const m = moduleOf[nodeId];
+  if (m) return m;
+  // Older payloads, and any node the Go side did not place: fall back to the
+  // top of its own path so the node is still drawn somewhere.
+  const x = item(nodeId);
+  if (!x) return null;
+  return x.segs.length > 1 ? 'g:' + x.segs[0] : nodeId;
 }
 
-function visibleIds() {
-  const seen = new Set();
-  for (const n of files) seen.add(repOf(n.id));
-  return [...seen];
+// The child of scope `f` that contains `node`, or null when the node is
+// outside that scope entirely. This is the function the whole view rests on:
+// every edge is classified by it, so a wrong answer here silently moves or
+// drops connections.
+function childAt(nodeId, f) {
+  if (f.length === 0) return moduleIdOf(nodeId);
+  const x = item(nodeId);
+  if (!x) return null;
+  const segs = x.segs;
+  // Packages are not path-segmented the way files are: "@scope/pkg" is two
+  // segments but "react-dom/client" is one segment containing a slash. Always
+  // read segs, never label.split('/').
+  if (segs.length <= f.length) return null;
+  for (let i = 0; i < f.length; i++) if (segs[i] !== f[i]) return null;
+  if (segs.length === f.length + 1) return nodeId;
+  return 'g:' + segs.slice(0, f.length + 1).join('/');
 }
 
-// Open the largest closed folder, one at a time, until the count is readable.
-// A fixed tree depth is wrong for both shapes it meets: a flat repo shows one
-// box, a deep monorepo six hundred.
-function autoExpand() {
-  expanded.clear();
-  // Fewer boxes than will technically fit, because "fits" and "readable" are
-  // different thresholds: 55 boxes fitted the window at 0.52 zoom, where the
-  // labels are six pixels tall. The default view should be legible without
-  // touching anything.
-  const TARGET = 34;
-  for (let pass = 0; pass < 400; pass++) {
-    const vis = visibleIds();
-    if (vis.length >= TARGET) break;
-    let best = null;
-    for (const id of vis) {
-      const x = item(id);
-      if (!x.group || expanded.has(id) || childIds(x).length < 2) continue;
-      if (!best || x.count > best.count) best = x;
-    }
-    if (!best) break;
-    expanded.add(best.id);
+let childMemo = new Map();
+function childOf(nodeId) {
+  let v = childMemo.get(nodeId);
+  if (v === undefined) { v = childAt(nodeId, focus); childMemo.set(nodeId, v); }
+  return v;
+}
+
+// Where an out-of-scope endpoint lives: walk up until it becomes something the
+// reader could see, so a sibling folder shows as itself and anything further
+// away shows as its module.
+let railMemo = new Map();
+function railRep(nodeId) {
+  let v = railMemo.get(nodeId);
+  if (v !== undefined) return v;
+  v = null;
+  for (let k = focus.length - 1; k >= 0; k--) {
+    const f = focus.slice(0, k);
+    const id = childAt(nodeId, f);
+    if (id) { v = { focus: f, id }; break; }
   }
+  railMemo.set(nodeId, v);
+  return v;
+}
+
+// A box for a module that is not a directory.
+const synthetic = new Map();
+function synthModule(m) {
+  let x = synthetic.get(m.id);
+  if (!x) {
+    x = { id: m.id, group: false, synthetic: true, kind: 'group',
+          base: m.name, label: m.path || m.name, dir: '', segs: [m.id],
+          count: m.files, leaves: [], kidIds: new Set(),
+          blast: 0, depth: 0, ldepth: 0, entry: false, dead: false };
+    synthetic.set(m.id, x);
+    groups.set(m.id, x);   // so item() finds it everywhere else too
+  }
+  return x;
+}
+
+// The boxes of the current scope. At the root these are the modules the Go
+// side computed; deeper down they are the immediate children of the focus.
+function scopeChildren() {
+  if (focus.length === 0) {
+    if (DATA.modules && DATA.modules.length) {
+      const out = [];
+      for (const m of DATA.modules) {
+        let x = item(m.id);
+        if (!x) {
+          // Modules with no directory behind them: the repository-root files,
+          // the merged tail, external packages. Dropping them would leave
+          // their files with no box to appear in, and every edge touching one
+          // would vanish from the picture without being counted anywhere.
+          x = synthModule(m);
+        }
+        x.moduleName = m.name; x.moduleKind = m.kind;
+        out.push(x);
+      }
+      if (out.length) return out;
+    }
+    // No module map in the payload: the two halves land independently.
+    return rootIds.map(item).filter(x => x && !(x.group && x.count === 0));
+  }
+  const f = focusItem();
+  return f ? childIds(f).map(item).filter(Boolean) : [];
 }
 
 // ── layout ──────────────────────────────────────────────────────────────────
@@ -323,7 +438,9 @@ function autoExpand() {
 
 let view = { boxes: [], edges: [], width: 0, height: 0, index: new Map() };
 
-function isOpen(x) { return x.group && expanded.has(x.id); }
+// Nothing nests any more: a box is a leaf or a collapsed folder, never a
+// container drawn around its contents.
+function isOpen() { return false; }
 
 // The part of a file's directory the reader cannot already see.
 //
@@ -333,12 +450,12 @@ function isOpen(x) { return x.group && expanded.has(x.id); }
 // the width of every column in the graph.
 function dirSuffix(x) {
   if (!x.dir || x.group) return '';
-  for (let p = x.parent; p; ) {
-    const pb = item(p);
-    if (!pb) break;
-    if (isOpen(pb) && pb.label && x.dir.startsWith(pb.label)) return x.dir.slice(pb.label.length);
-    p = pb.parent;
-  }
+  // Relative to the scope the reader is already inside. Without this every
+  // box inside packages/excalidraw/ is captioned "packages/excalidraw/" — the
+  // breadcrumb directly above it, repeated for every box — and because the
+  // caption has to fit, it sets the width of every column.
+  const f = focusPath();
+  if (f && x.dir.startsWith(f)) return x.dir.slice(f.length);
   return x.dir;
 }
 
@@ -350,15 +467,7 @@ function leafWidth(x) {
   return Math.max(MINW, Math.min(NW, Math.ceil(w) + 18));
 }
 
-function measureBox(x) {
-  if (!isOpen(x)) { x.bw = x.group ? NW : leafWidth(x); x.bh = NH; return; }
-  const kids = childIds(x).map(item);
-  for (const k of kids) measureBox(k);
-  const b = packChildren(kids);
-  x.inner = b;
-  x.bw = Math.max(NW, b.w) + PAD * 2;
-  x.bh = b.h + PAD * 2 + HEADER;
-}
+function measureBox(x) { x.bw = x.group ? NW : leafWidth(x); x.bh = NH; }
 
 // Pack a set of laid-out boxes into layers by depth, wrapping tall columns.
 function packChildren(kids) {
@@ -366,7 +475,7 @@ function packChildren(kids) {
 
   const byLayer = new Map();
   for (const k of kids) {
-    const d = k.depth || 0;
+    const d = k.ldepth || 0;
     (byLayer.get(d) || byLayer.set(d, []).get(d)).push(k);
   }
   const depths = [...byLayer.keys()].sort((a, b) => a - b);
@@ -416,48 +525,143 @@ function columnsOf(boxes) {
     if (isOpen(b)) continue;
     const x = Math.round(b.x);
     const c = at.get(x);
-    if (c) { c.n++; c.w = Math.max(c.w, b.bw); c.depth = Math.min(c.depth, b.depth); }
-    else at.set(x, { x, w: b.bw, n: 1, depth: b.depth });
+    if (c) { c.n++; c.w = Math.max(c.w, b.bw); c.depth = Math.min(c.depth, b.ldepth); }
+    else at.set(x, { x, w: b.bw, n: 1, depth: b.ldepth });
   }
   return [...at.values()].sort((a, b) => a.x - b.x);
 }
 
-function placeBox(x, ax, ay, out) {
-  x.x = ax; x.y = ay;
-  out.push(x);
-  if (!isOpen(x)) return;
-  const ox = ax + PAD, oy = ay + PAD + HEADER;
-  for (const k of childIds(x).map(item)) placeBox(k, ox + k.rx, oy + k.ry, out);
+// Depth within the current scope.
+//
+// A folder's global depth is the minimum over everything inside it, so at the
+// root — where every module contains something shallow — every box lands in
+// column one and the numbered axis says nothing. Recomputing over just the
+// boxes on screen is cheap because there are at most a few dozen, and it makes
+// the column numbers true again: column 1 really is "nothing here imports
+// these".
+//
+// Longest path, bounded, then compacted to consecutive ranks — the same
+// algorithm and the same two reasons as internal/web/layout.go.
+function localDepths(kids, edges) {
+  for (const k of kids) k.ldepth = 0;
+  const idx = new Map(kids.map(k => [k.id, k]));
+  for (let pass = 0; pass < 64; pass++) {
+    let changed = false;
+    for (const e of edges) {
+      const a = idx.get(e.from), b = idx.get(e.to);
+      if (!a || !b) continue;
+      if (a.ldepth + 1 > b.ldepth) { b.ldepth = a.ldepth + 1; changed = true; }
+    }
+    if (!changed) break;
+  }
+  const seen = [...new Set(kids.map(k => k.ldepth))].sort((a, b) => a - b);
+  const rank = new Map(seen.map((d, i) => [d, i]));
+  for (const k of kids) k.ldepth = rank.get(k.ldepth);
 }
 
 function relayout() {
-  // Top level: whatever is visible with nothing open above it.
-  const tops = [];
-  for (const id of rootIds) {
-    const x = item(id);
-    if (x.group && x.count === 0) continue;
-    tops.push(x);
-  }
-  for (const t of tops) measureBox(t);
-  const b = packChildren(tops);
+  const kids = scopeChildren();
+  childMemo = new Map();
+  railMemo = new Map();
 
-  const boxes = [];
-  for (const t of tops) placeBox(t, t.rx, t.ry, boxes);
-
-  // Aggregate edges onto whatever box now stands for each endpoint.
+  // One pass over every edge, classified by where each end sits relative to
+  // the scope. The five buckets are counted rather than inferred so the sum
+  // can be checked against the edge total — an edge that silently belongs to
+  // no bucket is a connection the reader never learns about.
   const agg = new Map();
+  const cross = new Map();
+  const audit = { inside: 0, self: 0, railIn: 0, railOut: 0, outside: 0 };
+  const crossOf = id => {
+    let c = cross.get(id);
+    if (!c) { c = { in: new Map(), out: new Map() }; cross.set(id, c); }
+    return c;
+  };
+  const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+
   for (const e of DATA.edges) {
-    const a = repOf(e.from), b2 = repOf(e.to);
-    if (a === b2) continue;
-    const k = a + ' ' + b2;
-    const cur = agg.get(k);
-    if (cur) cur.n++; else agg.set(k, { from: a, to: b2, n: 1 });
+    const a = childOf(e.from), b = childOf(e.to);
+    if (a && b) {
+      if (a === b) { audit.self++; continue; }
+      audit.inside++;
+      const k = a + ' ' + b;
+      const cur = agg.get(k);
+      if (cur) cur.n++; else agg.set(k, { from: a, to: b, n: 1 });
+    } else if (a) {
+      audit.railOut++;
+      const r = railRep(e.to);
+      if (r) bump(crossOf(a).out, r.id);
+    } else if (b) {
+      audit.railIn++;
+      const r = railRep(e.from);
+      if (r) bump(crossOf(b).in, r.id);
+    } else {
+      audit.outside++;
+    }
   }
 
-  view = { boxes, edges: [...agg.values()], width: b.w, height: b.h,
-           layers: columnsOf(boxes), index: new Map(boxes.map(x => [x.id, x])) };
-  for (const x of boxes) x.text = undefined;
-  refreshChips();
+  let edges = [...agg.values()];
+
+  // Fold away the children nothing here connects to.
+  //
+  // Scoping bounds the lines but not the boxes: a directory of test fixtures
+  // can hold hundreds of files with not one edge between them.
+  // svelte/tests/runtime-legacy/samples/ is 1,209 such boxes and
+  // apps/v4/examples/base/ is 513, both with zero internal edges. Drawn
+  // individually they are a wall; as one box they are a fact.
+  const touched = new Set();
+  for (const e of edges) { touched.add(e.from); touched.add(e.to); }
+  const quiet = kids.filter(k => !touched.has(k.id));
+  let quietBox = null;
+  if (quiet.length >= QUIET_MIN && quiet.length > kids.length * 0.5) {
+    kids = kids.filter(k => touched.has(k.id));
+    const nFiles = quiet.reduce((n, k) => n + (k.group ? k.count : 1), 0);
+    quietBox = {
+      id: 'q:' + focus.join('/'), group: false, quiet: true, kind: 'quiet',
+      base: quiet.length + ' unconnected', label: '', dir: '', segs: focus.concat('\x00quiet'),
+      count: nFiles, blast: 0, depth: 0, ldepth: 0, entry: false, dead: false,
+      note: nFiles + ' files, nothing here depends on them',
+    };
+    kids.push(quietBox);
+  }
+
+  localDepths(kids, edges);
+  for (const k of kids) measureBox(k);
+  const b = packChildren(kids);
+  for (const k of kids) { k.x = k.rx; k.y = k.ry; k.text = undefined; }
+
+  // Line weight is relative to what is on screen. Fixed thresholds were tuned
+  // for file-to-file counts; module aggregates run into the hundreds, so every
+  // line saturated into the heaviest bucket and the weight stopped meaning
+  // anything.
+  const ns = edges.map(e => e.n).sort((x, y) => x - y);
+  const q = f => ns.length ? ns[Math.min(ns.length - 1, Math.floor(ns.length * f))] : 1;
+  const wt = [Math.max(2, q(0.6)), Math.max(4, q(0.9))];
+
+  const dense = edges.length > EDGE_LIMIT;
+  view = { focus: focus.slice(), boxes: kids, edges, dense, quiet: quietBox, width: b.w, height: b.h,
+           layers: columnsOf(kids), index: new Map(kids.map(x => [x.id, x])),
+           cross, audit, wt, rails: buildRails(cross) };
+
+  renderCrumbs();
+  renderRails();
+}
+
+// Rails collect everything that crosses the boundary, so a connection leaving
+// the scope is shown rather than dropped.
+function buildRails(cross) {
+  const inc = new Map(), out = new Map();
+  const add = (m, k, n) => m.set(k, (m.get(k) || 0) + n);
+  for (const c of cross.values()) {
+    for (const [k, n] of c.in) add(inc, k, n);
+    for (const [k, n] of c.out) add(out, k, n);
+  }
+  const shape = m => [...m.entries()]
+    .map(([id, n]) => {
+      const x = item(id);
+      return { id, n, label: x ? (x.moduleName || x.base || x.label) : id.replace(/^g:/, '') };
+    })
+    .sort((a, b) => b.n - a.n);
+  return { in: shape(inc), out: shape(out) };
 }
 
 // ── canvas ──────────────────────────────────────────────────────────────────
@@ -529,7 +733,11 @@ function fitParams() {
   const w = Math.max(view.width, 1) + 24, h = Math.max(view.height, 1) + 24 + HEAD, pad = 30;
   const both = Math.min((VW - pad * 2) / w, (VH - pad * 2) / h);
   let ns = both >= READABLE ? both : Math.max(READABLE, (VH - pad * 2) / h);
-  ns = Math.min(ns, 1.1);
+  // The old ceiling was set when the whole repository was on screen at once.
+  // A module view is seven boxes, and holding it at 1.1 leaves most of the
+  // window empty around a small diagram — the zoom should follow how much
+  // there is to look at.
+  ns = Math.min(ns, view.boxes.length <= 14 ? 1.75 : 1.1);
   const fitsW = w * ns <= VW - pad * 2;
   const fitsH = h * ns <= VH - pad * 2;
   return [fitsW ? (VW - w * ns) / 2 : pad,
@@ -566,6 +774,7 @@ function render() {
   drawBoxes(x0, y0, x1, y1);
   if (selected) drawChain(s > 0.28);
   drawLayerHeads();
+  drawDenseNote();
   ctx.restore();
   drawMini();
 }
@@ -576,6 +785,17 @@ function render() {
 // so. Column 1 is what nothing imports — the entry points — and each column
 // after it is one import further in, so "how deep is this file" becomes
 // something you can read off the axis instead of infer.
+// A withheld picture has to announce itself, or it reads as an empty one.
+function drawDenseNote() {
+  if (!view.dense || selected) return;
+  ctx.font = '12.5px "Geist", ui-sans-serif, sans-serif';
+  ctx.fillStyle = C.inkFaint;
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(view.edges.length + ' connections here — click a file to see its own',
+               0, -12);
+  ctx.textBaseline = 'middle';
+}
+
 function drawLayerHeads() {
   const L = view.layers || [];
   if (!L.length || s < 0.16) return;
@@ -627,6 +847,10 @@ function drawEdges(x0, y0, x1, y1, curved) {
     // context lines — the graph appearing to show nothing connected to the one
     // thing you asked about.
     const touches = selected && (e.from === selected || e.to === selected);
+    // On a dense level the background lines are withheld entirely — see
+    // EDGE_LIMIT. What the selection touches is still drawn, which is the
+    // only thing that was legible there anyway.
+    if (view.dense && !touches && !(selected && hotSet.has(e.from) && hotSet.has(e.to))) continue;
     if (!touches) {
       if (Math.max(a.x + a.bw, b.x + b.bw) < x0 || Math.min(a.x, b.x) > x1) continue;
       if (Math.max(a.y + a.bh, b.y + b.bh) < y0 || Math.min(a.y, b.y) > y1) continue;
@@ -651,7 +875,7 @@ function drawEdges(x0, y0, x1, y1, curved) {
       hot.push([a, b, dir, direct]);
       continue;
     }
-    buckets[e.n > 24 ? 2 : e.n > 4 ? 1 : 0].push([a, b]);
+    buckets[e.n >= view.wt[1] ? 2 : e.n >= view.wt[0] ? 1 : 0].push([a, b]);
   }
 
   ctx.strokeStyle = C.edge;
@@ -824,6 +1048,11 @@ function layoutText(x) {
 }
 
 function drawMini() {
+  // Scoping means the graph usually fits, and a minimap of something already
+  // fully visible is 198x124 pixels of stage spent saying nothing.
+  const off = view.width * s > VW + 4 || view.height * s > VH + 4;
+  mini.style.display = off ? 'block' : 'none';
+  if (!off) return;
   const w = mini.width / dpr, h = mini.height / dpr;
   mctx.save();
   mctx.scale(dpr, dpr);
@@ -872,7 +1101,7 @@ addEventListener('mousemove', e => {
     return;
   }
   const hit = boxAt(...worldAt(e.clientX, e.clientY));
-  const id = hit && !isOpen(hit.box) || (hit && hit.header) ? hit.box.id : null;
+  const id = hit ? hit.box.id : null;
   if (id !== hovered) { hovered = id; stage.style.cursor = id ? 'pointer' : ''; draw(); }
 });
 
@@ -907,40 +1136,6 @@ mini.addEventListener('click', e => {
 
 // Opening a folder keeps it under the cursor and eases into the new layout, so
 // the picture does not jump out from under the click that caused it.
-function expandGroup(g) {
-  const before = { x: g.x, y: g.y };
-  expanded.add(g.id);
-  relayout();
-  const after = view.index.get(g.id);
-  if (after) moveTo(tx + (before.x - after.x) * s, ty + (before.y - after.y) * s, s, 260);
-  select(null);
-  draw();
-}
-
-function collapseGroup(id) {
-  const before = view.index.get(id);
-  const bx = before ? before.x : 0, by = before ? before.y : 0;
-  expanded.delete(id);
-  for (const e of [...expanded]) if (e.startsWith(id + '/')) expanded.delete(e);
-  relayout();
-  const after = view.index.get(id);
-  if (after) moveTo(tx + (bx - after.x) * s, ty + (by - after.y) * s, s, 260);
-  select(null);
-  draw();
-}
-
-function collapseAll() { expanded.clear(); autoExpand(); relayout(); select(null); fit(); }
-
-document.getElementById('fit').addEventListener('click', () => fit());
-document.getElementById('q').addEventListener('input', e => { filter = e.target.value.toLowerCase(); draw(); });
-addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT') return;
-  if (e.key === 'Escape') select(null);
-  if (e.key === 'f') fit();
-  if (e.key === 'c') collapseAll();
-});
-
-// Two sets, not one: the things that would break if this changed, and the
 // things this one pulls in. Drawn in different colours, because "who depends on
 // me" and "what do I depend on" are opposite questions and a single highlight
 // answers neither clearly.
@@ -983,6 +1178,7 @@ function select(id, frame = false) {
   if (!id) { upSet = downSet = null; }
   renderPanel(id ? view.index.get(id) : null);
   if (id && frame) frameSelection(id);
+  renderRails();
   draw();
 }
 
@@ -1031,7 +1227,7 @@ function frameSelection(id) {
   moveTo(VW / 2 - cx * ns, VH / 2 - cy * ns, ns, 380);
 }
 
-// ── panel ───────────────────────────────────────────────────────────────────
+// ── panel helpers ───────────────────────────────────────────────────────────
 function esc(x) { return String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
 function bytes(b) {
   if (!b) return null;
@@ -1040,18 +1236,89 @@ function bytes(b) {
   return b.toFixed(i ? 1 : 0) + ' ' + u[i];
 }
 
-function refreshChips() {
+// ── navigation ──────────────────────────────────────────────────────────────
+
+function navigate(segs, keepSelection) {
+  focus = segs.slice();
+  // A selection from the previous scope leaves hotSet full of ids that have no
+  // box here, and drawBoxes dims everything not in hotSet — the entire new
+  // scope would render at alpha 0.12.
+  if (!keepSelection) { selected = null; hotSet = null; upSet = downSet = null; renderPanel(null); }
+  relayout();
+  fit(true);
+}
+
+function descend(box) {
+  if (!box || !box.group) return;
+  navigate(box.segs);
+}
+
+function goHome() { navigate([]); }
+
+// Bring an arbitrary node on screen and select it.
+//
+// The panel lists a file's real imports, and under scoping most of those live
+// outside the current scope. Without this every panel link is a dead end: the
+// selection would be set to an id with no box, and the panel would blank.
+function navigateTo(nodeId) {
+  const x = item(nodeId);
+  if (!x) return;
+  if (x.group) { navigate(x.segs); return; }
+  const parent = x.segs.slice(0, -1);
+  if (parent.join('/') !== focus.join('/')) navigate(parent, true);
+  select(nodeId, true);
+}
+
+function renderCrumbs() {
   const bar = document.getElementById('chips');
-  const open = [...expanded].sort();
-  if (!open.length) { bar.innerHTML = ''; bar.style.display = 'none'; return; }
+  // Always rendered, even at the root. Toggling it between none and flex
+  // changes the height of the stage, and nothing re-sizes the canvas when it
+  // does, so the drawing surface goes stale until the next window resize.
   bar.style.display = 'flex';
-  bar.innerHTML = `<span class="chips-label">open</span>` +
-    open.slice(0, 12).map(id => `<button class="chip" data-collapse="${esc(id)}">${esc(id.slice(2))}/ ✕</button>`).join('') +
-    (open.length > 12 ? `<span class="chips-label">+${open.length - 12}</span>` : '') +
-    `<button class="chip alt" data-reset="1">reset</button>`;
-  for (const el of bar.querySelectorAll('[data-collapse]')) el.onclick = () => collapseGroup(el.getAttribute('data-collapse'));
-  const r = bar.querySelector('[data-reset]');
-  if (r) r.onclick = collapseAll;
+  const parts = [`<button class="crumb" data-up="0">${esc(repoName())}</button>`];
+  for (let i = 0; i < focus.length; i++) {
+    parts.push('<span class="sep">/</span>');
+    parts.push(`<button class="crumb" data-up="${i + 1}">${esc(focus[i])}</button>`);
+  }
+  const f = focusItem();
+  bar.innerHTML = parts.join('') +
+    `<span class="crumb-count">${f ? f.count + ' files' : files.length + ' files'}</span>`;
+  for (const el of bar.querySelectorAll('[data-up]')) {
+    el.onclick = () => navigate(focus.slice(0, +el.getAttribute('data-up')));
+  }
+}
+
+function repoName() {
+  const r = (DATA.root || '').replace(/\/+$/, '');
+  return r.slice(r.lastIndexOf('/') + 1) || 'repo';
+}
+
+// Rails are DOM, not canvas: they are chrome rather than content, they must
+// not scale with the zoom, and a scope can be imported by more modules than
+// fit on screen, which needs scrolling.
+function renderRails() {
+  for (const side of ['in', 'out']) {
+    const el = document.getElementById('rail-' + side);
+    if (!el) continue;
+    const list = view.rails ? view.rails[side] : [];
+    const sel = selected && view.cross ? view.cross.get(selected) : null;
+    const hot = sel ? sel[side] : null;
+    const title = side === 'in' ? 'imported by' : 'imports';
+    if (!list.length) {
+      el.innerHTML = `<h4>${title}</h4><p class="rail-none">nothing crosses here</p>`;
+      continue;
+    }
+    el.innerHTML = `<h4>${title}</h4>` + list.slice(0, 14).map(r => {
+      const dim = hot && !hot.has(r.id) ? ' dim' : '';
+      const on = hot && hot.has(r.id) ? ' hot' : '';
+      return `<button class="rail-item ${side}${dim}${on}" data-rail="${esc(r.id)}">` +
+             `<span class="rl">${esc(r.label)}</span><span class="rn">${r.n}</span></button>`;
+    }).join('') +
+      (list.length > 14 ? `<p class="rail-none">+${list.length - 14} more</p>` : '');
+    for (const b of el.querySelectorAll('[data-rail]')) {
+      b.onclick = () => navigateTo(b.getAttribute('data-rail'));
+    }
+  }
 }
 
 function goTo(id) {
@@ -1064,11 +1331,11 @@ function goTo(id) {
 function renderPanel(x) {
   const panel = document.getElementById('panel');
   if (!x) {
-    const closed = view.boxes.filter(b => !isOpen(b));
+    const closed = view.boxes.slice();
     const top = closed.slice().sort((a, b) => b.blast - a.blast).slice(0, 10);
     panel.innerHTML =
       `<p class="empty"><b>${closed.length} boxes · ${files.length} files</b>` +
-      `Click a folder to open it, its title bar to close it. Click a file for its dependencies.</p>` +
+      `Click a folder to go inside it, the breadcrumb above to come back. Click a file for its dependencies.</p>` +
       `<h3>heaviest here</h3><ul>` +
       top.map(t => `<li data-go="${esc(t.id)}">${esc(t.base)}<span class="d"> ${t.group ? t.count + ' files' : t.blast}</span></li>`).join('') +
       `</ul>`;
@@ -1079,8 +1346,8 @@ function renderPanel(x) {
     panel.innerHTML = `<div class="kind">folder</div><h2>${esc(x.base)}</h2>` +
       `<div class="dir">${esc(x.dir)}</div>` +
       `<div class="row"><span>files inside</span><span>${x.count}</span></div>` +
-      `<button class="chip" id="openg">open</button>`;
-    document.getElementById('openg').onclick = () => expandGroup(x);
+      `<button class="chip" id="openg">go inside</button>`;
+    document.getElementById('openg').onclick = () => descend(x);
     return;
   }
 
@@ -1144,7 +1411,7 @@ function wire(panel) {
       }
       const id = el.getAttribute('data-go');
       const t = view.index.get(id);
-      if (t && t.group) { goTo(id); expandGroup(t); } else select(id, true);
+      navigateTo(id);
     };
   }
 }
@@ -1220,7 +1487,7 @@ document.getElementById('theme').onclick = () =>
 
 readColors();
 addEventListener('resize', resize);
-autoExpand();
+
 relayout();
 resize();
 fit(false);

@@ -240,8 +240,43 @@ func Build(res *scan.Result, includePackages bool) *Payload {
 	// module map is the one view that must describe the entire repository,
 	// since it is what the reader sees first and navigates by.
 	mm := modules.Build(res)
-	p.Modules, p.ModuleOf = mm.Modules, mm.Of
-	p.ModuleEdges, p.ModuleCycles = mm.Edges, mm.Cycles
+
+	// Keep only what the page can actually draw. Packages are in the graph
+	// even when they are left out of the payload, so the map would otherwise
+	// offer an "external packages" module holding 84 nodes that do not exist
+	// here — a box the reader can click into and find empty.
+	drawn := make(map[string]string, len(p.Nodes))
+	used := map[string]bool{}
+	for _, n := range p.Nodes {
+		if m, ok := mm.Of[n.ID]; ok {
+			drawn[n.ID] = m
+			used[m] = true
+		}
+	}
+	p.ModuleOf = drawn
+	p.Modules = make([]modules.Module, 0, len(mm.Modules))
+	for _, m := range mm.Modules {
+		if used[m.ID] {
+			p.Modules = append(p.Modules, m)
+		}
+	}
+	p.ModuleEdges = make([]modules.Edge, 0, len(mm.Edges))
+	for _, e := range mm.Edges {
+		if used[e.From] && used[e.To] {
+			p.ModuleEdges = append(p.ModuleEdges, e)
+		}
+	}
+	for _, c := range mm.Cycles {
+		keep := true
+		for _, id := range c {
+			if !used[id] {
+				keep = false
+			}
+		}
+		if keep {
+			p.ModuleCycles = append(p.ModuleCycles, c)
+		}
+	}
 	return p
 }
 
