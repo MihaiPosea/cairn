@@ -34,9 +34,32 @@ Your `package.json` declares 13 dependencies. Your lockfile names 109. Your `nod
 of them and weighs 394 MB. cairn shows the path between those numbers, and which of your own files is
 responsible for it.
 
-## It has been checked on real repositories
+## It has been checked on 54 real repositories
 
-Not fixtures — actual open-source projects, cloned and scanned:
+Not fixtures — actual open-source projects, cloned fresh and scanned with one frozen binary:
+
+| | |
+|---|---|
+| repositories | **54 scanned, 0 failures** |
+| files | 175,152 |
+| imports | 556,388 |
+| unresolved | 0.55% |
+| **unexplained** | **0.033%** |
+| repositories with zero unexplained | **29 of 54** |
+| parse failures | **0** |
+
+React, Angular, Vue, Svelte, Solid, Qwik, Preact, Lit, Next, Nuxt, SvelteKit, Vite, Webpack, Rollup,
+Parcel, MUI, Chakra, Radix, Ant Design, Mantine, Headless UI, React Spectrum, Redux, Zustand, Jotai,
+MobX, TanStack, Express, Fastify, NestJS, Prisma, tRPC, Hono, Drizzle, Elysia, Vitest, Playwright,
+Jest, Cypress, Testing Library, Zod, Axios, Immer, date-fns, Lodash, tldraw, Lexical, n8n, cal.com,
+ESLint, Prettier, Storybook, Turborepo, Nx.
+
+"Unresolved" counts every specifier cairn could not point at a file. Almost none are mistakes: they
+are test fixtures asserting that an import *fails*, scaffolding templates, codegen output, and
+binaries for other platforms. cairn names each cause. What is left — **186 imports out of 556,388** —
+was checked by hand and is genuinely absent from those repositories.
+
+A smaller reference set, with the same measurement:
 
 | repo | files | imports | unresolved | unexplained |
 |---|---|---|---|---|

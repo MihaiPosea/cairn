@@ -676,3 +676,144 @@ directions.
 `e2e/fixtures/errors/src/pages/import-not-found.astro`, whose entire purpose is to import something
 that is not there. Resolving it would mean the tool had started lying, and every number above it
 would stop meaning anything.
+
+---
+
+## Fifty-four repositories
+
+Twelve hand-written fixtures test what the author imagined. Nine real repositories test what a few
+real projects do. Fifty-four test the ecosystem — and every one of them found something the previous
+tier could not.
+
+Each repo is cloned shallow, scanned, recorded, and deleted, so the sweep runs in bounded disk.
+
+### What it found
+
+**The worst bug in the project, and it was a false positive.**
+
+```js
+export default 'hello vite'
+```
+
+read as a re-export of a module named `hello vite`. The string is a direct child of the export
+statement either way; only the `from` keyword separates a re-export from a plain exported value, and
+that check was missing — since M1. An invented edge is worse than a missing one: a missing edge
+understates the graph, a fabricated one puts a node in it that no code mentions. Removing it deleted
+**105 phantom imports from the Vite repository alone**.
+
+**Glob imports were dropping edges silently.** Parcel and Vite let one specifier match many files —
+`../intl/*.json` pulls in every locale beside it. Treated as a single path it resolved to nothing,
+so React Spectrum's dependency on all of those files was simply absent. A glob now becomes one edge
+per match, because that is what the import depends on.
+
+**The clustering key included the filename**, which split one shared cause into one group per file.
+tldraw's auto-generated asset manifest imports 179 images from `./embed-icons/`, none of which exist
+in a fresh clone — each became a group of one, so the systematic-absence rule never fired and all 179
+read as separate mistakes.
+
+**Five framework conventions**, each invisible until a repo that used it showed up:
+
+| convention | repo that revealed it |
+|---|---|
+| `starters/` as a scaffolding directory | Qwik |
+| `@qwik-router-config` — a bare `@name`, which npm forbids as a package | Qwik |
+| `./+types/route` — React Router v7 typegen | React Router |
+| `<sveltekit:generated>/server.js` — a build-time placeholder | SvelteKit |
+| `*.gen.ts`, `*.generated.ts`, `gen/` | Cypress |
+
+**Playground code got its own category.** A playground really runs, so "this is demo code" is a
+different statement from "this import is meant to fail", and folding them together would hide real
+breakage in a directory people read.
+
+
+### Results
+
+Fifty-four repositories, cloned fresh and scanned with one frozen binary:
+
+| | |
+|---|---|
+| repositories | **54 scanned, 0 failures** |
+| files | 175,152 |
+| imports | 556,388 |
+| unresolved | 3,043 (**0.55%**) |
+| unexplained | 186 (**0.033%**) |
+| repositories with zero unexplained | **29 of 54** |
+| parse failures | **0** |
+| total scan time | 143 s |
+
+Every repository, largest first:
+
+| repo | files | imports | unresolved | unexplained |
+|---|---|---|---|---|
+| n8n-io/n8n | 21,560 | 104,491 | 0.01% | 7 |
+| mui/material-ui | 27,741 | 102,524 | 0.19% | 12 |
+| calcom/cal.com | 5,061 | 26,098 | 0.04% | 6 |
+| adobe/react-spectrum | 3,947 | 24,431 | 0.18% | 11 |
+| TanStack/router | 8,890 | 24,391 | 0.80% | 12 |
+| angular/angular | 7,109 | 23,309 | 0.26% | 15 |
+| prisma/prisma | 4,551 | 22,903 | 0.03% | 0 |
+| storybookjs/storybook | 4,973 | 19,149 | 0.74% | 14 |
+| mantinedev/mantine | 5,483 | 18,752 | 0.02% | 3 |
+| webpack/webpack | 14,102 | 17,327 | 5.21% | 11 |
+| cypress-io/cypress | 4,897 | 14,629 | 2.58% | 21 |
+| TanStack/table | 3,913 | 13,675 | 0.00% | 0 |
+| ant-design/ant-design | 2,876 | 12,026 | 0.01% | 1 |
+| tldraw/tldraw | 2,783 | 11,313 | 1.60% | 3 |
+| facebook/react | 4,440 | 9,805 | 0.22% | 12 |
+| rollup/rollup | 12,750 | 9,556 | 3.05% | 1 |
+| QwikDev/qwik | 2,348 | 7,789 | 0.64% | 9 |
+| chakra-ui/chakra-ui | 2,752 | 7,763 | 0.36% | 7 |
+| microsoft/playwright | 1,556 | 6,860 | 0.29% | 5 |
+| vitest-dev/vitest | 2,382 | 6,663 | 0.11% | 0 |
+| drizzle-team/drizzle-orm | 971 | 6,360 | 0.00% | 0 |
+| nestjs/nest | 1,914 | 6,281 | 0.05% | 0 |
+| facebook/lexical | 1,375 | 6,229 | 0.02% | 1 |
+| date-fns/date-fns | 1,633 | 5,326 | 0.00% | 0 |
+| parcel-bundler/parcel | 2,948 | 4,525 | 1.15% | 1 |
+| jestjs/jest | 2,272 | 4,522 | 0.55% | 9 |
+| nuxt/nuxt | 1,490 | 4,022 | 0.10% | 0 |
+| vitejs/vite | 1,568 | 3,840 | 0.29% | 0 |
+| prettier/prettier | 5,857 | 3,413 | 4.10% | 0 |
+| trpc/trpc | 903 | 3,381 | 0.03% | 1 |
+| lit/lit | 1,107 | 3,181 | 0.57% | 9 |
+| sveltejs/kit | 2,449 | 2,624 | 0.30% | 0 |
+| remix-run/react-router | 698 | 2,532 | 0.36% | 0 |
+| eslint/eslint | 1,485 | 2,373 | 1.60% | 4 |
+| vuejs/core | 538 | 2,153 | 0.05% | 0 |
+| tailwindlabs/headlessui | 417 | 1,644 | 0.06% | 0 |
+| colinhacks/zod | 510 | 1,424 | 0.07% | 0 |
+| honojs/hono | 385 | 1,230 | 0.08% | 0 |
+| fastify/fastify | 295 | 1,203 | 12.88% | 0 |
+| radix-ui/primitives | 330 | 1,187 | 0.00% | 0 |
+| elysiajs/elysia | 242 | 751 | 0.00% | 0 |
+| axios/axios | 237 | 704 | 0.00% | 0 |
+| preactjs/preact | 241 | 695 | 1.44% | 2 |
+| pmndrs/jotai | 181 | 644 | 0.00% | 0 |
+| reduxjs/redux | 199 | 564 | 0.00% | 0 |
+| mobxjs/mobx | 199 | 445 | 0.90% | 0 |
+| expressjs/express | 141 | 403 | 0.00% | 0 |
+| tannerlinsley/react-charts | 118 | 393 | 0.00% | 0 |
+| solidjs/solid | 113 | 274 | 3.28% | 9 |
+| sindresorhus/ky | 54 | 186 | 0.00% | 0 |
+| pmndrs/zustand | 51 | 163 | 0.00% | 0 |
+| immerjs/immer | 55 | 111 | 4.50% | 0 |
+| lodash/lodash | 27 | 79 | 0.00% | 0 |
+| testing-library/react-testing-library | 35 | 72 | 0.00% | 0 |
+
+**What is still unresolved is named.** Of the 3,043:
+
+| | |
+|---|---|
+| test fixtures whose imports are meant to fail | 1,725 |
+| an entire directory tree absent, produced by a build | 485 |
+| codegen output | 373 |
+| scaffolding templates | 143 |
+| build output with no source equivalent | 97 |
+| native binaries for other platforms | 18 |
+| playground and example apps | 16 |
+| **unexplained** | **186** |
+
+The 186 are 165 relative paths with no matching file, spread across 25 repositories — roughly seven
+per repository, in half a million imports. Spot-checked by hand: Solid imports `./jsx.js` from nine
+files and no such file exists anywhere in the package. They are broken imports in those repositories,
+which is the floor a tool that refuses to invent resolutions can reach.
