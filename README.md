@@ -2,18 +2,15 @@
 
 **See what your software actually depends on.**
 
-Point it at a repo it has never seen. No config, no migration, nothing to adopt.
+Abstraction has always been how software gets built. AI writing your code is the newest layer of it —
+and the thing underneath hasn't gone anywhere. Something still has to be true about how your files
+connect, whoever or whatever wrote them.
 
-Your `package.json` declares 13 dependencies. Your lockfile names 109. Your `node_modules` holds 51
-of them and weighs 394 MB. cairn shows you the path between those numbers — and which of your own
-files is responsible for it.
-
-*(Real figures from a small Next.js site. The gap between "locked" and "on disk" is optional and
-platform-specific packages. Most tools pick one of the three numbers and print it without saying
-which.)*
+cairn shows you that layer. Point it at a repo it has never seen. No config, no migration, nothing to
+adopt.
 
 ```
-cairn scan .                 build the graph and summarise it
+cairn scan .                 build the graph, summarise it
 cairn blast lib/utils.ts     what breaks if you change this file
 cairn dead                   files nothing reaches from an entry point
 cairn why left-pad           the path that dragged this package in
@@ -30,50 +27,77 @@ Every command takes `--json`.
 ## Why it exists
 
 Every tool in this space does one half. `madge` and `dependency-cruiser` map the files you wrote.
-`depcheck` and `knip` look at packages and dead code. Nothing joins the two, so nobody can answer
-the question that actually matters: *this one import, in this one component, costs how much?*
+`depcheck` and `knip` look at packages and dead code. Nothing joins the two, so nobody can answer the
+question that actually matters: *this one import, in this one component, costs how much?*
 
-It is also a learning project — written to understand how dependency resolution, incremental
-indexing, and graph analysis really work. That is not a disclaimer; it is the point. `DESIGN.md`
-records every decision and the alternatives rejected, including the bugs found along the way.
+Your `package.json` declares 13 dependencies. Your lockfile names 109. Your `node_modules` holds 51
+of them and weighs 394 MB. cairn shows the path between those numbers, and which of your own files is
+responsible for it.
+
+## It has been checked on real repositories
+
+Not fixtures — actual open-source projects, cloned and scanned:
+
+| repo | files | imports | unresolved |
+|---|---|---|---|
+| excalidraw | 668 | 4,692 | **0.00%** |
+| nx | 5,440 | 21,120 | 0.25% |
+| tanstack-query | 1,230 | 4,458 | 0.36% |
+| turborepo | 1,284 | 3,255 | 1.20% |
+| svelte | 8,060 | 7,725 | 1.27% |
+| vue-core | 538 | 2,153 | 2.14% |
+| create-t3-app | 240 | 768 | 2.60% |
+| astro | 4,615 | 11,614 | 8.05%\* |
+| shadcn/ui | 3,947 | 19,895 | 23.24%\* |
+
+\* Those two are *true findings*, not failures. astro's point into `dist/`, which does not exist in an
+unbuilt clone; shadcn's are files its build generates. cairn says which, in one line:
+
+```
+4618 of 4623 (100%) have the same cause: alias or generated path that does
+not exist in a fresh checkout
+```
+
+## And on every project shape
+
+| | |
+|---|---|
+| Next.js — app router · pages router | ✅ |
+| Vite · React SPA | ✅ |
+| Monorepos — pnpm · npm · yarn · Turborepo · Nx | ✅ |
+| TypeScript project references | ✅ |
+| Vue · Svelte · Astro single-file components | ✅ |
+| Node · CommonJS backends | ✅ |
+| React Native platform extensions | ✅ |
+| Libraries (`src` + `dist`, `exports` maps) | ✅ |
+| Deno · Bun — `npm:` `jsr:` `https:` `bun:` | ✅ |
+| Node subpath imports (`#internal/*`) | ✅ |
+| Framework virtual modules (`astro:` `virtual:` `$app/`) | ✅ |
 
 ## Honesty
 
-**Every scan prints an unresolved rate** — the share of import specifiers cairn could not resolve to
-a file, a package, or a builtin. Resolution in JavaScript is genuinely hard: `exports` maps, path
-aliases, four competing lockfile formats, an ESM convention where `./x.js` means `x.ts`. Any tool
-claiming perfection is hiding its misses.
+**Every scan prints an unresolved rate** — the share of specifiers cairn could not resolve. Resolution
+in JavaScript is genuinely hard, and any tool claiming perfection is hiding its misses.
 
-**Correctness is measured, not asserted.** `cairn verify` diffs the graph against TypeScript's own
-resolver, specifier by specifier:
+**Correctness is measured, not asserted.** `cairn verify` diffs the graph against **TypeScript's own
+resolver**, specifier by specifier — 100% precision and recall across 10,442 imports. The harness was
+tested by sabotage, because a verifier that cannot fail proves nothing: corrupting alias substitution
+dropped precision to 2.83%.
 
-| repo | imports compared | precision | recall |
-|---|---|---|---|
-| personal-website | 18 | 100% | 100% |
-| travel-site | 57 | 100% | 100% |
-| Personal Portfolio | 25 | 100% | 100% |
-| generated, 5,001 files | 10,442 | 100% | 100% |
+**`verify` reports which rules the repo exercised.** A perfect score on a repo whose imports are all
+relative says nothing about path aliases.
 
-The harness was tested by sabotage, because a verifier that cannot fail proves nothing: corrupting
-alias substitution dropped precision to 2.83%.
-
-**`verify` also reports which rules the repo exercised.** A perfect score on a repo whose imports
-are all relative says nothing about path aliases — and that is not hypothetical. `travel-site` has a
-`@/*` alias configured and not one import that uses it.
-
-**Advice is labelled by confidence.** "Declared but never imported" is a hint, not a finding, because
-config files and plugins load packages by name. `cairn affected` refuses to answer at all when the
-graph is incomplete, and says why.
+**Advice is labelled by confidence.** "Declared but never imported" is a hint, not a finding.
+`cairn dead` refuses to answer when a repo has no entry points, rather than declaring every file
+dead. `cairn affected` refuses when the graph is incomplete.
 
 ## Performance
 
-Generated 5,000-file repo, 10,442 imports:
-
-| | wall clock |
-|---|---|
-| cold scan | 1.53 s |
-| rescan, nothing changed | 0.075 s |
-| rescan after editing one file | 0.083 s |
+| | 5,000 files | 50,000 files |
+|---|---|---|
+| cold scan | 1.2 s | 7.4 s (264 MB) |
+| rescan, unchanged | 0.08 s | 1.1 s (122 MB) |
+| rescan after one edit | 0.08 s | 1.1 s |
 
 Parse results are cached by content hash — never mtime, which changes on a fresh checkout and does
 not change when a file is restored from backup.
@@ -84,9 +108,9 @@ not change when a file is restored from backup.
 go install github.com/MihaiPosea/cairn/cmd/cairn@latest
 ```
 
-One static binary, no C toolchain, no npm. Cross-compiles to any target Go supports — the tree-sitter
-runtime is pure Go. (`cairn verify` is the one exception: it needs `node` and a `typescript` install
-in the repo being checked, because it runs the real compiler as its oracle.)
+One static binary. No C toolchain, no npm, cross-compiles anywhere Go does — the tree-sitter runtime
+is pure Go. (`cairn verify` is the exception: it runs the real TypeScript compiler as its oracle, so
+it needs `node` and a `typescript` install in the repo being checked.)
 
 ## Scope
 
@@ -94,28 +118,19 @@ JavaScript and TypeScript, done properly, before anything else. Python and Go ar
 additional resolvers behind the same interface. A tool that is right about one ecosystem beats one
 that is vaguely right about five.
 
-Deliberately out of scope: resolving *into* package internals (packages are single nodes, which is
-why `exports` maps never needed implementing), and dynamic dependency discovery. Computed
-`import()` calls are recorded and reported, never guessed at.
+Deliberately out of scope: resolving *into* package internals — packages are single nodes, which is
+why `exports` maps never needed implementing — and guessing at dynamic dependencies. Computed
+`import()` calls are recorded and reported, never inferred.
 
-**This is not a supported product.** Issues may go unanswered.
-
-## Status
-
-- [x] M0 — graph core: nodes, edges, traversals
-- [x] M1 — parse TS/JS with a real grammar
-- [x] M2 — resolution: tsconfig paths, extension ladder, ESM TypeScript, index files
-- [x] M3 — package graph from lockfiles (bun · npm · pnpm · yarn) and node_modules
-- [x] M4 — the join, and the five answers
-- [x] M5 — incremental index: 1.53 s cold, 75 ms warm on 5,000 files
-- [x] M6 — verified against TypeScript's own resolver: 100% on 10,442 imports
-- [x] M7 — self-contained web view (`cairn serve`, `cairn export`)
-- [x] M8 — `cairn affected`: what needs re-running after a change
+**This is a learning project, not a supported product.** `DESIGN.md` records every decision, the
+alternatives rejected, and all sixteen bugs found along the way — including the ones the tests caught
+and the ones only real repositories did. Issues may go unanswered.
 
 ## Develop
 
 ```
 go test ./...
 go test -race ./...
+go test -fuzz FuzzParse ./internal/lang/jsts/
 go run ./cmd/cairn scan ~/some-repo
 ```
