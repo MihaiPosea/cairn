@@ -44,10 +44,10 @@ and the precision and recall numbers are published.
 ## Status
 
 - [x] M0 — graph core: nodes, edges, traversal
-- [ ] M1 — parse TS/JS, resolve relative imports
-- [ ] M2 — real resolution: tsconfig paths, exports maps, node_modules, workspaces
-- [ ] M3 — package graph from lockfiles (npm · pnpm · yarn · bun) and node_modules
-- [ ] M4 — the join, and the five answers
+- [x] M1 — parse TS/JS with a real grammar
+- [x] M2 — resolution: tsconfig paths, extension ladder, ESM TypeScript, index files
+- [x] M3 — package graph from lockfiles (bun · npm · pnpm · yarn) and node_modules
+- [x] M4 — the join, and the five answers
 - [ ] M5 — incremental index (re-scan only what changed)
 - [ ] M6 — differential correctness harness vs. the real bundler
 - [ ] M7 — web UI

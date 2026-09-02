@@ -118,3 +118,47 @@ way. Verified against `personal-website`: the three it flags have zero reference
 
 **"Imported but not declared" is reported as a real bug**, because it is one — the code works only
 because something else happened to install the package, and it will break for the next person.
+
+---
+
+## M4 — the five answers
+
+**Every question is a traversal; the work is choosing which edges count.**
+The algorithms are textbook. Being careful about edge kinds is not, and it is where tools in this
+space get people hurt:
+
+- *Blast radius* follows **every** edge including type-only, because changing a type breaks the
+  compile of everything importing it. The question is "what must I re-check", not "what ships".
+- *Dead files* also follows type-only edges, for the same reason inverted: a file imported only for
+  its types is not dead, and deleting it breaks the build.
+- *Cost* follows only package-to-package edges.
+
+**Entry-point detection is the real work in dead-code analysis.**
+Reachability is trivial. Knowing where to start is not. Nothing "imports" a Next.js page — the
+framework loads it by filename convention — so a naive implementation declares an entire app dead.
+cairn recognises the app-router and pages-router conventions, middleware, instrumentation, config
+files, ambient declarations, scripts and tests, and reports the reason each file was treated as an
+entry point rather than asserting it silently.
+
+**Confidence is lowered when the repo contains computed imports.**
+`import(routeFor(slug))` cannot be followed statically, and the file it loads looks exactly like a
+dead one. When any such call exists, every dead-file result says so.
+
+**Tarjan's algorithm is iterative, not recursive.**
+The textbook form recurses once per node; a 60,000-deep dependency chain overflows the goroutine
+stack. There is a test for exactly that depth. Crashing on a large repo is the one failure this tool
+cannot afford, because large repos are the ones that need it.
+
+**`why` falls back from your code to package.json.**
+Asking why `scheduler` is installed originally returned "nothing reaches it", which is true and
+useless — nothing in your code imports it, but `react-dom` does. The query now tries your own files
+first (the actionable answer) and falls back to what package.json declares, reporting which of the
+two it used.
+
+**A determinism bug the tests caught.**
+Parse results arrive from the worker pool in whatever order the scheduler and disk decide, so nodes
+discovered during resolution were added to the graph in a different order every run. The graph was
+always equivalent, never identical — which silently breaks every golden test and makes two scans of
+an unchanged repo diff against each other. Fixed by collecting results and processing them in sorted
+path order: parsing stays parallel, graph construction becomes deterministic. The property was
+claimed in the M0 notes and was not actually true until now.

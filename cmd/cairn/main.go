@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"github.com/MihaiPosea/cairn/internal/graph"
 	"github.com/MihaiPosea/cairn/internal/scan"
 )
 
@@ -24,10 +24,12 @@ usage:
   cairn dead                    files nothing reaches from an entry point
   cairn why <package>           the path that dragged this package in
   cairn cycles                  import cycles, as readable chains
-  cairn cost <specifier>        packages and bytes this one import pulls in
+  cairn cost <package>          packages and bytes this one import pulls in
 
 flags:
+  --dir <path>                  repo to scan (default: .)
   --json                        machine-readable output
+  --sizes                       measure installed package sizes (walks node_modules)
 `
 
 func main() {
@@ -38,189 +40,124 @@ func main() {
 }
 
 func run(args []string) error {
-	if len(args) == 0 {
+	if len(args) == 0 || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
 		fmt.Print(usage)
 		return nil
 	}
 
-	fs := flag.NewFlagSet("cairn", flag.ContinueOnError)
-	asJSON := fs.Bool("json", false, "machine-readable output")
-	sizes := fs.Bool("sizes", false, "measure installed package sizes (walks node_modules)")
 	cmd := args[0]
+	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
+	dir := fs.String("dir", ".", "repo to scan")
+	asJSON := fs.Bool("json", false, "machine-readable output")
+	sizes := fs.Bool("sizes", false, "measure installed package sizes")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
 	rest := fs.Args()
 
+	// `cairn scan ~/repo` is the shape people expect, so a positional argument
+	// to scan is also treated as the directory.
+	if cmd == "scan" && len(rest) > 0 {
+		*dir = rest[0]
+		rest = rest[1:]
+	}
+
+	root, err := filepath.Abs(*dir)
+	if err != nil {
+		return err
+	}
+
+	needsArg := func() (string, error) {
+		if len(rest) == 0 {
+			return "", fmt.Errorf("%s needs an argument — see `cairn help`", cmd)
+		}
+		return rest[0], nil
+	}
+
 	switch cmd {
 	case "scan":
-		dir := "."
-		if len(rest) > 0 {
-			dir = rest[0]
-		}
-		abs, err := filepath.Abs(dir)
+		return withScan(root, *sizes, func(res *scan.Result) error {
+			if *asJSON {
+				return emit(summary(res))
+			}
+			printSummary(res)
+			return nil
+		})
+
+	case "blast":
+		target, err := needsArg()
 		if err != nil {
 			return err
 		}
-		return scan_(abs, *asJSON, *sizes)
+		return withScan(root, false, func(res *scan.Result) error {
+			return runBlast(res, target, *asJSON)
+		})
 
-	case "blast", "dead", "why", "cycles", "cost":
-		return fmt.Errorf("%s: not implemented yet (milestone M4)", cmd)
+	case "dead":
+		return withScan(root, false, func(res *scan.Result) error {
+			return runDead(res, *asJSON)
+		})
 
-	case "help", "-h", "--help":
-		fmt.Print(usage)
-		return nil
+	case "why":
+		target, err := needsArg()
+		if err != nil {
+			return err
+		}
+		return withScan(root, false, func(res *scan.Result) error {
+			return runWhy(res, target, *asJSON)
+		})
+
+	case "cycles":
+		return withScan(root, false, func(res *scan.Result) error {
+			return runCycles(res, *asJSON)
+		})
+
+	case "cost":
+		target, err := needsArg()
+		if err != nil {
+			return err
+		}
+		// Cost without sizes is only half an answer, so it opts in by default.
+		return withScan(root, true, func(res *scan.Result) error {
+			return runCost(res, target, *asJSON)
+		})
 
 	default:
 		return fmt.Errorf("unknown command %q — run `cairn help`", cmd)
 	}
 }
 
-// scan walks the repo, parses what it finds, resolves the imports, and prints
-// a summary of the resulting graph.
-func scan_(dir string, asJSON, sizes bool) error {
-	res, err := scan.RunWith(dir, scan.Options{MeasureSizes: sizes})
+func withScan(root string, sizes bool, fn func(*scan.Result) error) error {
+	res, err := scan.RunWith(root, scan.Options{MeasureSizes: sizes})
 	if err != nil {
 		return err
 	}
-	if asJSON {
-		return json.NewEncoder(os.Stdout).Encode(summary(res))
-	}
-	printSummary(res)
-	return nil
+	return fn(res)
 }
 
-type summaryOut struct {
-	Root           string  `json:"root"`
-	Files          int     `json:"files_scanned"`
-	FileNodes      int     `json:"file_nodes"`
-	Imports        int     `json:"imports"`
-	FileEdges      int     `json:"file_edges"`
-	Packages       int     `json:"packages"`
-	Builtins       int     `json:"builtins"`
-	Unresolved     int     `json:"unresolved"`
-	UnresolvedRate float64 `json:"unresolved_rate"`
-	Unanalyzable   int     `json:"unanalyzable"`
-	ParseFailures  int     `json:"parse_failures"`
-	AliasesLoaded  bool    `json:"tsconfig_aliases_loaded"`
-
-	PackageSource       string   `json:"package_source,omitempty"`
-	Declared            int      `json:"declared,omitempty"`
-	Locked              int      `json:"locked,omitempty"`
-	Installed           int      `json:"installed,omitempty"`
-	UnusedDeclared      []string `json:"unused_declared,omitempty"`
-	ImportedNotDeclared []string `json:"imported_not_declared,omitempty"`
+func emit(v any) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
 }
 
-func summary(res *scan.Result) summaryOut {
-	s := res.Graph.Stats()
-	out := summaryOut{
-		Root:           res.Root,
-		Files:          res.FilesScanned,
-		FileNodes:      s[graph.File],
-		Imports:        res.ImportsFound,
-		FileEdges:      res.Graph.EdgeCount(graph.File),
-		Packages:       s[graph.Package],
-		Builtins:       s[graph.Builtin],
-		Unresolved:     len(res.Unresolved),
-		UnresolvedRate: res.UnresolvedRate(),
-		Unanalyzable:   len(res.Unanalyzable),
-		ParseFailures:  len(res.ParseFailures),
-		AliasesLoaded:  res.AliasesLoaded,
+// short strips the "file:" / "pkg:" prefix for display.
+func short(id string) string {
+	if i := strings.Index(id, ":"); i >= 0 {
+		return id[i+1:]
 	}
-	if res.Packages != nil {
-		out.PackageSource = res.Packages.Source
-		out.Declared = res.Packages.DeclaredCount()
-		out.Locked = len(res.Packages.Packages)
-	}
-	if res.Disagree != nil {
-		out.Installed = res.Disagree.InstalledCount
-	}
-	if res.Join != nil {
-		out.UnusedDeclared = res.Join.UnusedDeclared
-		out.ImportedNotDeclared = res.Join.ImportedNotDeclared
-	}
-	return out
+	return id
 }
 
-func printSummary(res *scan.Result) {
-	s := res.Graph.Stats()
-	fmt.Printf("%s\n\n", res.Root)
-	fmt.Printf("  %-22s %d\n", "files scanned", res.FilesScanned)
-	if assets := s[graph.File] - res.FilesScanned; assets > 0 {
-		fmt.Printf("  %-22s %d (css, json, other imported assets)\n", "other files reached", assets)
+func humanBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
 	}
-	fmt.Printf("  %-22s %d\n", "imports", res.ImportsFound)
-	fmt.Printf("  %-22s %d\n", "file -> file edges", res.Graph.EdgeCount(graph.File))
-	fmt.Printf("  %-22s %d\n", "packages referenced", s[graph.Package])
-	fmt.Printf("  %-22s %d\n", "runtime builtins", s[graph.Builtin])
-
-	if res.AliasesLoaded {
-		fmt.Printf("  %-22s %s\n", "tsconfig aliases", "loaded")
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
 	}
-	if n := len(res.ParseFailures); n > 0 {
-		fmt.Printf("  %-22s %d\n", "files that failed", n)
-	}
-
-	fmt.Printf("\n  %-22s %d (%.1f%% of imports)\n", "unresolved", len(res.Unresolved), res.UnresolvedRate()*100)
-	for i, u := range res.Unresolved {
-		if i == 10 {
-			fmt.Printf("      … and %d more\n", len(res.Unresolved)-10)
-			break
-		}
-		fmt.Printf("      %s:%d  %s\n", u.File, u.Line, u.Specifier)
-	}
-
-	printPackages(res)
-
-	if n := len(res.Unanalyzable); n > 0 {
-		fmt.Printf("\n  %-22s %d (import() with a computed path)\n", "unanalyzable", n)
-		for i, u := range res.Unanalyzable {
-			if i == 5 {
-				break
-			}
-			fmt.Printf("      %s:%d  %s\n", u.File, u.Line, u.Reason)
-		}
-	}
-}
-
-func printPackages(res *scan.Result) {
-	if res.Packages == nil {
-		return
-	}
-	p := res.Packages
-	fmt.Printf("\n  packages (%s)\n", p.Source)
-	fmt.Printf("      %-18s %d\n", "declared", p.DeclaredCount())
-	fmt.Printf("      %-18s %d\n", "in lockfile", len(p.Packages))
-	if res.Disagree != nil {
-		fmt.Printf("      %-18s %d\n", "on disk", res.Disagree.InstalledCount)
-		if n := len(res.Disagree.LockedNotInstalled); n > 0 {
-			fmt.Printf("      %-18s %d (optional or platform-specific)\n", "locked, not on disk", n)
-		}
-		if n := len(res.Disagree.InstalledNotLocked); n > 0 {
-			fmt.Printf("      %-18s %d\n", "on disk, not locked", n)
-		}
-	}
-
-	if res.Join == nil {
-		return
-	}
-	if n := len(res.Join.ImportedNotDeclared); n > 0 {
-		fmt.Printf("\n  imported but not declared in package.json  (%d)\n", n)
-		fmt.Println("      these work by accident and will break for the next person")
-		for _, name := range res.Join.ImportedNotDeclared {
-			fmt.Printf("      %s\n", name)
-		}
-	}
-	if n := len(res.Join.UnusedDeclared); n > 0 {
-		fmt.Printf("\n  declared but never imported  (%d)\n", n)
-		fmt.Println("      a hint, not proof — config files and plugins load packages by name")
-		for i, name := range res.Join.UnusedDeclared {
-			if i == 8 {
-				fmt.Printf("      … and %d more\n", n-8)
-				break
-			}
-			fmt.Printf("      %s\n", name)
-		}
-	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGT"[exp])
 }

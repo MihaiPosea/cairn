@@ -1,0 +1,165 @@
+package scan
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/MihaiPosea/cairn/internal/graph"
+	"github.com/MihaiPosea/cairn/internal/query"
+)
+
+// fixture writes a small but realistic Next.js-shaped repo.
+func fixture(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	files := map[string]string{
+		"package.json": `{"name":"fix","dependencies":{"react":"^19.0.0","unused-dep":"^1.0.0"}}`,
+		"tsconfig.json": `{
+  // path alias, Next.js style
+  "compilerOptions": { "paths": { "@/*": ["./*"] } },
+}`,
+		"app/page.tsx": `import { Button } from "@/components/Button";
+import type { Config } from "@/lib/types";
+import { helper } from "./helper";
+import React from "react";
+export default function Page() { return <Button />; }`,
+		"app/helper.ts":         `export const helper = 1;`,
+		"app/layout.tsx":        `import "./globals.css";`,
+		"app/globals.css":       `body { margin: 0 }`,
+		"components/Button.tsx": `import { fmt } from "@/lib/utils"; export const Button = () => null;`,
+		"lib/utils.ts":          `import fs from "node:fs"; export const fmt = () => fs;`,
+		"lib/types.ts":          `export type Config = { a: number };`,
+		"lib/orphan.ts":         `export const nobody = 1;`,
+
+		// installed packages, no lockfile — exercises the node_modules fallback
+		"node_modules/react/package.json":      `{"name":"react","version":"19.0.0","dependencies":{"scheduler":"^0.25.0"}}`,
+		"node_modules/scheduler/package.json":  `{"name":"scheduler","version":"0.25.0"}`,
+		"node_modules/unused-dep/package.json": `{"name":"unused-dep","version":"1.0.0"}`,
+	}
+	for p, body := range files {
+		full := filepath.Join(root, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+func TestEndToEnd(t *testing.T) {
+	res, err := Run(fixture(t))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if res.FilesScanned != 7 {
+		t.Errorf("files scanned = %d, want 7", res.FilesScanned)
+	}
+	if !res.AliasesLoaded {
+		t.Error("tsconfig aliases should have loaded")
+	}
+	if len(res.Unresolved) != 0 {
+		t.Errorf("unresolved should be empty, got %v", res.Unresolved)
+	}
+
+	// node_modules must never enter the file graph.
+	for _, id := range res.Graph.IDs() {
+		if n := res.Graph.Nodes[id]; n.Kind == graph.File && filepath.HasPrefix(n.Path, "node_modules") {
+			t.Errorf("node_modules leaked into the file graph: %s", n.Path)
+		}
+	}
+
+	// The css import resolves to a real file node.
+	if _, ok := res.Graph.Nodes[graph.NodeID(graph.File, "app/globals.css")]; !ok {
+		t.Error("globals.css should be a file node")
+	}
+	// node:fs is a builtin, not a package.
+	if n, ok := res.Graph.Nodes[graph.NodeID(graph.Builtin, "node:fs")]; !ok || n.Kind != graph.Builtin {
+		t.Error("node:fs should be a builtin node")
+	}
+}
+
+func TestEndToEndPackagesAndJoin(t *testing.T) {
+	res, err := Run(fixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Packages == nil {
+		t.Fatal("packages should have loaded from node_modules")
+	}
+	if len(res.Packages.Packages) != 3 {
+		t.Errorf("installed = %d, want 3", len(res.Packages.Packages))
+	}
+	if res.Join == nil {
+		t.Fatal("join report missing")
+	}
+	if len(res.Join.UnusedDeclared) != 1 || res.Join.UnusedDeclared[0] != "unused-dep" {
+		t.Errorf("unused declared = %v, want [unused-dep]", res.Join.UnusedDeclared)
+	}
+	if len(res.Join.ImportedNotDeclared) != 0 {
+		t.Errorf("imported-not-declared = %v, want none", res.Join.ImportedNotDeclared)
+	}
+}
+
+func TestEndToEndQueries(t *testing.T) {
+	res, err := Run(fixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := res.Graph
+
+	// lib/utils.ts is imported by Button, which is imported by page.
+	b := query.BlastRadius(g, graph.NodeID(graph.File, "lib/utils.ts"))
+	if len(b.Affected) != 2 {
+		t.Errorf("blast radius = %v, want Button.tsx and app/page.tsx", query.SortedKeys(b.Affected))
+	}
+
+	// Only lib/orphan.ts is unreachable. lib/types.ts is reached by a
+	// type-only import and must NOT be reported dead.
+	dead := query.DeadFiles(g, false)
+	if len(dead) != 1 || dead[0].File != graph.NodeID(graph.File, "lib/orphan.ts") {
+		t.Errorf("dead = %v, want only lib/orphan.ts", dead)
+	}
+
+	// scheduler is nobody's direct import; it rides in behind react, which
+	// app/page.tsx does import. So the chain starts at your own code.
+	w := query.WhyPackage(g, "scheduler", []string{"react", "unused-dep"})
+	if w == nil || len(w.Path) != 3 {
+		t.Fatalf("why scheduler = %+v, want page.tsx -> react -> scheduler", w)
+	}
+	if w.From != "your code" || w.Direct {
+		t.Errorf("scheduler should be reachable from your code but not imported directly, got %+v", w)
+	}
+
+	c := query.PackageCost(g, "react")
+	if len(c.Packages) != 2 {
+		t.Errorf("react cost = %v, want react + scheduler", c.Packages)
+	}
+}
+
+// Two scans of an unchanged repo must produce identical output.
+func TestScanIsDeterministic(t *testing.T) {
+	root := fixture(t)
+	first, err := Run(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		next, err := Run(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a, b := first.Graph.IDs(), next.Graph.IDs()
+		if len(a) != len(b) {
+			t.Fatalf("run %d produced %d nodes, first produced %d", i, len(b), len(a))
+		}
+		for j := range a {
+			if a[j] != b[j] {
+				t.Fatalf("run %d differs at node %d: %s vs %s", i, j, b[j], a[j])
+			}
+		}
+	}
+}

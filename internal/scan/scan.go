@@ -134,7 +134,23 @@ func RunWith(dir string, opts Options) (*Result, error) {
 		res.Graph.AddNode(&graph.Node{ID: graph.NodeID(graph.File, f), Kind: graph.File, Path: f})
 	}
 
+	// Parse in parallel, then process in a fixed order.
+	//
+	// Workers finish in whatever order the scheduler and disk decide, so
+	// consuming the channel directly would add nodes to the graph in a
+	// different order on every run. The graph would be equivalent but not
+	// identical, which breaks every golden test and makes two scans of an
+	// unchanged repo diff against each other. Collecting first and sorting by
+	// path costs one slice and buys determinism outright.
+	byPath := make(map[string]parsed, len(files))
 	for p := range parseAll(root, files, parser) {
+		byPath[p.path] = p
+	}
+	for _, f := range files { // files is already sorted
+		p, ok := byPath[f]
+		if !ok {
+			continue
+		}
 		if p.err != nil {
 			res.ParseFailures = append(res.ParseFailures, p.path)
 			continue
