@@ -185,12 +185,12 @@
   .crumb-count { margin-left:auto; font:11.5px var(--font-mono); color:var(--ink-faint); }
 
   .rail {
-    width:clamp(148px,13vw,196px); flex-shrink:0; overflow-y:auto;
+    width:clamp(118px,10vw,164px); flex-shrink:0; overflow-y:auto;
     background:var(--surface); padding:14px 12px 30px;
   }
   #rail-in  { border-right:1px solid var(--rule); }
   #rail-out { border-left:1px solid var(--rule); }
-  .rail h4 { font:550 10.5px/1 var(--font-sans); letter-spacing:0.06em;
+  .rail h4 { font:550 10px/1.35 var(--font-sans); letter-spacing:0.05em; word-break:break-all;
              text-transform:uppercase; color:var(--ink-faint); margin:0 0 9px 4px; }
   .rail-none { font:11.5px var(--font-mono); color:var(--ink-faint); margin:0 0 0 4px; }
   .rail-item {
@@ -1455,7 +1455,8 @@ function renderRails() {
     const list = view.rails ? view.rails[side] : [];
     const sel = selected && view.cross ? view.cross.get(selected) : null;
     const hot = sel ? sel[side] : null;
-    const title = side === 'in' ? 'imported by' : 'imports';
+    const here = focus.length ? focus[focus.length - 1] + '/' : repoName();
+    const title = side === 'in' ? 'into ' + here : 'out of ' + here;
     if (!list.length) {
       el.innerHTML = `<h4>${title}</h4><p class="rail-none">nothing crosses here</p>`;
       continue;
@@ -1899,7 +1900,15 @@ for (const t of document.querySelectorAll('.tab')) {
 }
 
 readColors();
-addEventListener('resize', resize);
+// Re-fit, not just re-measure. resize() resizes the canvas and leaves the
+// camera where it was, so widening or narrowing the window slid the graph off
+// its own edge and left the first column cut in half.
+let resizeTimer = null;
+addEventListener('resize', () => {
+  resize();
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => fit(false), 90);
+});
 
 relayout();
 focus = openingFocus();
