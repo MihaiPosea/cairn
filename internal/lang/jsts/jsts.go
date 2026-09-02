@@ -136,6 +136,25 @@ func (p *Parser) Parse(path string, src []byte) ([]lang.RawImport, error) {
 	return out, nil
 }
 
+// validSpecifier reports whether a decoded specifier is usable as one.
+//
+// A module specifier containing a control character is not a real path, and
+// letting one through means it reaches filepath handling, a node ID, the JSON
+// output, and the HTML page. Found by fuzzing in six seconds: `import "0\000"`
+// decodes an octal escape to a NUL byte.
+//
+// Such an import is not dropped — it is reported as unanalyzable, the same
+// treatment a computed import() gets, because something is being imported and
+// pretending otherwise would hide it.
+func validSpecifier(s string) bool {
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
 // fromImportStatement handles `import ... from "x"`, bare `import "x"`, and
 // TypeScript's `import x = require("y")`.
 func fromImportStatement(n *ts.Node, l *ts.Language, src []byte) (lang.RawImport, bool) {
@@ -145,17 +164,20 @@ func fromImportStatement(n *ts.Node, l *ts.Language, src []byte) (lang.RawImport
 	// older TypeScript and throughout .d.ts files.
 	if clause := directChild(n, l, "import_require_clause"); clause != nil {
 		if s := directChild(clause, l, "string"); s != nil {
-			return lang.RawImport{
-				Specifier: stringValue(s, l, src),
-				Kind:      lang.Require,
-				Line:      line(n),
-			}, true
+			spec := stringValue(s, l, src)
+			if !validSpecifier(spec) {
+				return unusable(n, src), true
+			}
+			return lang.RawImport{Specifier: spec, Kind: lang.Require, Line: line(n)}, true
 		}
 	}
 
 	spec, ok := sourceString(n, l, src)
 	if !ok {
 		return lang.RawImport{}, false
+	}
+	if !validSpecifier(spec) {
+		return unusable(n, src), true
 	}
 	kind := lang.Static
 	if hasDirectChild(n, l, "type") {
@@ -164,12 +186,34 @@ func fromImportStatement(n *ts.Node, l *ts.Language, src []byte) (lang.RawImport
 	return lang.RawImport{Specifier: spec, Kind: kind, Line: line(n)}, true
 }
 
+// unusable records an import whose specifier cannot be used as a path.
+func unusable(n *ts.Node, src []byte) lang.RawImport {
+	expr := strings.TrimSpace(n.Text(src))
+	if len(expr) > 80 {
+		expr = expr[:80]
+	}
+	return lang.RawImport{Kind: lang.Unanalyzable, Line: line(n), Expr: sanitize(expr)}
+}
+
+// sanitize strips control characters so a diagnostic string is safe to print.
+func sanitize(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
+}
+
 // fromExportStatement handles re-exports. A plain `export const x = 1` has no
 // source string and is correctly ignored.
 func fromExportStatement(n *ts.Node, l *ts.Language, src []byte) (lang.RawImport, bool) {
 	spec, ok := sourceString(n, l, src)
 	if !ok {
 		return lang.RawImport{}, false
+	}
+	if !validSpecifier(spec) {
+		return unusable(n, src), true
 	}
 	kind := lang.Reexport
 	if hasDirectChild(n, l, "type") {
@@ -213,10 +257,14 @@ func fromCallExpression(n *ts.Node, l *ts.Language, src []byte) (lang.RawImport,
 		return lang.RawImport{}, false
 	}
 	if first.Type(l) == "string" {
-		return lang.RawImport{Specifier: stringValue(first, l, src), Kind: kind, Line: line(n)}, true
+		spec := stringValue(first, l, src)
+		if !validSpecifier(spec) {
+			return unusable(n, src), true
+		}
+		return lang.RawImport{Specifier: spec, Kind: kind, Line: line(n)}, true
 	}
 	// import(someVariable) — a real dependency we cannot name. Record it.
-	return lang.RawImport{Kind: lang.Unanalyzable, Line: line(n), Expr: first.Text(src)}, true
+	return lang.RawImport{Kind: lang.Unanalyzable, Line: line(n), Expr: sanitize(first.Text(src))}, true
 }
 
 // sourceString returns the value of the first direct `string` child, which is
