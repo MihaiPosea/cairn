@@ -43,6 +43,11 @@ type summaryOut struct {
 	// UnresolvedList is every unresolved specifier, not the truncated preview
 	// the human output shows. Diagnosing a high rate needs all of them.
 	UnresolvedList []unresolvedOut `json:"unresolved_list,omitempty"`
+
+	// UnresolvedByCategory counts them by cause, which is what turns a rate
+	// into a verdict: "0.9% unresolved, all of it test fixtures" is a healthy
+	// repo, and the same number of genuinely missing files is not.
+	UnresolvedByCategory map[string]int `json:"unresolved_by_category,omitempty"`
 }
 
 type unresolvedOut struct {
@@ -88,6 +93,12 @@ func summary(res *scan.Result) summaryOut {
 		out.UnresolvedList = append(out.UnresolvedList, unresolvedOut{
 			File: u.File, Line: u.Line, Specifier: u.Specifier, Reason: u.Reason,
 		})
+	}
+	if len(res.Unresolved) > 0 {
+		out.UnresolvedByCategory = map[string]int{}
+		for _, c := range scan.ClusterUnresolved(res.Unresolved) {
+			out.UnresolvedByCategory[c.Category] += c.Count
+		}
 	}
 	return out
 }

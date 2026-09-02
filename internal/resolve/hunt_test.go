@@ -299,3 +299,84 @@ func TestNoSourceTwinStaysUnresolved(t *testing.T) {
 		t.Errorf("got %v %q, want unresolved — there is no src/missing", got.Kind, got.Path)
 	}
 }
+
+// Root-absolute specifiers name static assets, which frameworks serve from a
+// directory rather than from the repository root.
+func TestStaticAssetsResolveFromTheNearestProjectRoot(t *testing.T) {
+	root := hrepo(t, map[string]string{
+		"package.json":                            `{"name":"root","workspaces":["apps/*"]}`,
+		"public/root-logo.svg":                    "<svg/>",
+		"apps/web/package.json":                   `{"name":"web"}`,
+		"apps/web/public/typescript.svg":          "<svg/>",
+		"apps/web/src/main.tsx":                   "",
+		"apps/site/package.json":                  `{"name":"site"}`,
+		"apps/site/static/hero.png":               "x",
+		"apps/site/src/index.ts":                  "",
+	})
+	r := resolver(t, root)
+
+	// The app's own public/ wins over the repository's.
+	if got := r.Resolve("apps/web/src/main.tsx", "/typescript.svg"); got.Path != "apps/web/public/typescript.svg" {
+		t.Errorf("got %v %q (%s), want apps/web/public/typescript.svg", got.Kind, got.Path, got.Reason)
+	}
+	// SvelteKit's static/ works too.
+	if got := r.Resolve("apps/site/src/index.ts", "/hero.png"); got.Path != "apps/site/static/hero.png" {
+		t.Errorf("got %q, want apps/site/static/hero.png", got.Path)
+	}
+	// Falling back to the repository root when the app has no public/.
+	if got := r.Resolve("apps/site/src/index.ts", "/root-logo.svg"); got.Path != "public/root-logo.svg" {
+		t.Errorf("got %q, want public/root-logo.svg", got.Path)
+	}
+}
+
+// Declaration files must be found, but must never win over an implementation.
+func TestDeclarationFiles(t *testing.T) {
+	root := hrepo(t, map[string]string{
+		"a.ts":            "",
+		"typings/style.d.ts": "",
+		"lib/both.ts":     "",
+		"lib/both.d.ts":   "",
+		"lib/types.js":    "", // an import of ./types.js where only .d.ts exists
+		"esm/only.d.ts":   "",
+	})
+	r := resolver(t, root)
+
+	if got := r.Resolve("a.ts", "./typings/style"); got.Path != "typings/style.d.ts" {
+		t.Errorf("got %q, want typings/style.d.ts", got.Path)
+	}
+	// The implementation wins when both are present.
+	if got := r.Resolve("a.ts", "./lib/both"); got.Path != "lib/both.ts" {
+		t.Errorf("got %q, want lib/both.ts — an implementation beats its declaration", got.Path)
+	}
+	// ESM-style ".js" specifier finding only a declaration.
+	if got := r.Resolve("a.ts", "./esm/only.js"); got.Path != "esm/only.d.ts" {
+		t.Errorf("got %q, want esm/only.d.ts", got.Path)
+	}
+}
+
+// A relative path reaching into node_modules names a package.
+func TestNodeModulesRelativePathIsAPackage(t *testing.T) {
+	root := hrepo(t, map[string]string{"src/a.ts": ""})
+	got := resolver(t, root).Resolve("src/a.ts", "../../node_modules/astro/dist/transitions")
+	if got.Kind != ToPackage || got.Package != "astro" {
+		t.Errorf("got %v %q, want package astro", got.Kind, got.Package)
+	}
+	if got.Subpath != "dist/transitions" {
+		t.Errorf("subpath = %q, want dist/transitions", got.Subpath)
+	}
+}
+
+// A package importing its own bundle resolves to the package entry.
+func TestOwnBundleResolvesToPackageEntry(t *testing.T) {
+	root := hrepo(t, map[string]string{
+		"packages/compiler-core/index.js":   "",
+		"packages/compiler-core/src/index.ts": "",
+	})
+	got := resolver(t, root).Resolve("packages/compiler-core/index.js", "./dist/compiler-core.cjs.prod.js")
+	if got.Path != "packages/compiler-core/src/index.ts" {
+		t.Errorf("got %v %q, want packages/compiler-core/src/index.ts", got.Kind, got.Path)
+	}
+	if !got.FromBuildOutput {
+		t.Error("should be flagged as coming from a build output")
+	}
+}

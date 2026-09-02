@@ -38,26 +38,27 @@ responsible for it.
 
 Not fixtures — actual open-source projects, cloned and scanned:
 
-| repo | files | imports | unresolved |
-|---|---|---|---|
-| excalidraw | 668 | 4,692 | **0.00%** |
-| astro | 4,615 | 11,614 | 0.15% |
-| nx | 5,440 | 21,120 | 0.25% |
-| tanstack-query | 1,230 | 4,458 | 0.34% |
-| turborepo | 1,284 | 3,255 | 1.01% |
-| svelte | 8,060 | 7,725 | 1.24% |
-| vue-core | 538 | 2,153 | 2.14% |
-| create-t3-app | 240 | 768 | 2.60% |
-| shadcn/ui | 3,947 | 19,895 | 23.24%\* |
+| repo | files | imports | unresolved | unexplained |
+|---|---|---|---|---|
+| excalidraw | 668 | 4,692 | 0.00% | **0** |
+| vue-core | 538 | 2,153 | 0.05% | **0** |
+| tanstack-query | 1,230 | 4,458 | 0.09% | **0** |
+| astro | 4,615 | 11,614 | 0.10% | **0** |
+| create-t3-app | 240 | 768 | 2.60% | **0** |
+| shadcn/ui | 3,947 | 19,895 | 23.24% | **0** |
+| nx | 5,440 | 21,120 | 0.14% | 2 |
+| svelte | 8,060 | 7,725 | 0.94% | 1 |
+| turborepo | 1,284 | 3,255 | 0.86% | 1 |
+| **total** | **26,022** | **75,680** | **6.3%** | **4  (0.005%)** |
 
-\* shadcn is a *true finding*, not a failure: those imports name files its registry generates during
-a build, and they exist nowhere in a fresh clone. cairn says so in one line rather than printing
-4,623 identical errors:
+The second column is the one that matters. "Unresolved" counts every specifier cairn could not
+point at a file — but in a healthy repository almost none of those are mistakes. They are test
+fixtures asserting that an import *fails*, scaffolding templates whose files appear later, codegen
+output, and binaries for other platforms. cairn names each cause, and what is left over —
+**four imports out of 75,680** — was checked by hand and is genuinely absent from those repos.
 
-```
-4618 of 4623 (100%) have the same cause: alias or generated path that does
-not exist in a fresh checkout
-```
+That is the floor. Driving it to zero would mean inventing resolutions for files that do not exist,
+which is the one thing a tool like this must never do.
 
 ## And on every project shape
 

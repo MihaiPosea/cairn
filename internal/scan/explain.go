@@ -96,20 +96,145 @@ done:
 	return prefix + strings.Join(parts[:2], "/") + "/…"
 }
 
+// generatedDirs are written by a framework or codegen step, never committed.
+var generatedDirs = map[string]bool{
+	".next": true, ".nuxt": true, ".svelte-kit": true, ".astro": true,
+	".source": true, ".vinxi": true, ".output": true, ".contentlayer": true,
+	"generated": true, "__generated__": true, ".wxt": true,
+}
+
 // categorise gives a group a plain-language cause.
+//
+// The categories exist because the remaining unresolved imports in a healthy
+// repo are almost never mistakes. They are test fixtures asserting that an
+// import fails, scaffolding templates referencing files that appear later,
+// codegen output, and binaries for other platforms. Calling all of that
+// "not found" is technically true and useless; naming it lets a reader decide
+// in one glance whether anything is actually wrong.
 func categorise(prefix string, group []Unresolvable) string {
-	for _, seg := range strings.Split(strings.TrimPrefix(prefix, "./"), "/") {
-		if buildDirs[seg] {
-			return "points into a build output — run the repo's build first"
+	// The importing file's location says more than the specifier does.
+	if allMatch(group, isTestFixture) {
+		return "test fixtures — these imports are meant to fail"
+	}
+	if allMatch(group, isTemplate) {
+		return "scaffolding templates — the files appear when the template is used"
+	}
+
+	// Inspect the group's actual specifiers, not just the shared prefix.
+	//
+	// The prefix is truncated to two segments for display, which throws away
+	// exactly the part that identifies a cause: "../../runtime/client/…"
+	// hides the ".prebuilt.js" that makes it codegen. Astro's remaining
+	// unresolved imports were all mislabelled for that reason.
+	if allMatch(group, func(_ string) bool { return true }) {
+		codegen, templates := true, true
+		for _, u := range group {
+			if !looksGenerated(u.Specifier) {
+				codegen = false
+			}
+			if !specifierIsTemplate(u.Specifier) {
+				templates = false
+			}
+		}
+		if codegen {
+			return "codegen output — written by a framework or generator, not committed"
+		}
+		if templates {
+			return "scaffolding templates — the files appear when the template is used"
 		}
 	}
+
+	segments := strings.Split(strings.TrimPrefix(prefix, "./"), "/")
+	for _, seg := range segments {
+		if generatedDirs[seg] {
+			return "codegen output — written by a framework or generator, not committed"
+		}
+	}
+	if strings.HasSuffix(prefix, ".node") || strings.HasSuffix(prefix, ".wasm") {
+		return "native binaries for other platforms"
+	}
+	for _, seg := range segments {
+		if buildDirs[seg] {
+			return "build output with no source equivalent — run the repo's build"
+		}
+	}
+	// A whole directory tree that is systematically absent.
+	//
+	// Individual mistakes do not cluster: nobody typos the same directory
+	// 4,611 times. When that many imports share a path prefix and none of them
+	// resolve, the tree is produced by something — a registry, a codegen step,
+	// a fetch — rather than missing by accident. shadcn/ui is the case that
+	// forced this: apps/v4/styles/ contains a README and nothing else, and its
+	// contents arrive during a build.
+	//
+	// The threshold matters. Set it low and real broken imports get excused;
+	// set it here and a genuine mistake still stands out as itself.
+	const systematic = 10
+	if len(group) >= systematic && strings.Contains(prefix, "/") {
+		return "an entire directory tree is absent — produced by a build or generator"
+	}
+
 	if strings.HasPrefix(prefix, ".") {
 		return "relative path with no matching file"
 	}
 	if strings.HasPrefix(prefix, "@") || strings.Contains(prefix, "/") {
-		return "alias or generated path that does not exist in a fresh checkout"
+		return "path does not exist in a fresh checkout"
 	}
 	return "not a file, a package, or a known virtual module"
+}
+
+func allMatch(group []Unresolvable, pred func(string) bool) bool {
+	if len(group) == 0 {
+		return false
+	}
+	for _, u := range group {
+		if !pred(u.File) {
+			return false
+		}
+	}
+	return true
+}
+
+func isTestFixture(path string) bool {
+	for _, marker := range []string{
+		"/tests/", "/test/", "__tests__/", "__testfixtures__/",
+		"/fixtures/", "/samples/", "/e2e/", "/__snapshots__/",
+	} {
+		if strings.Contains(path, marker) {
+			return true
+		}
+	}
+	return strings.HasPrefix(path, "tests/") || strings.HasPrefix(path, "test/")
+}
+
+// looksGenerated recognises names a build step produces.
+func looksGenerated(spec string) bool {
+	for _, seg := range strings.Split(spec, "/") {
+		if generatedDirs[seg] {
+			return true
+		}
+	}
+	// Astro writes its runtime scripts as "*.prebuilt.js" and
+	// "*.prebuilt-dev.js" during a build; no directory name gives that away.
+	return strings.Contains(spec, ".prebuilt")
+}
+
+func specifierIsTemplate(spec string) bool {
+	for _, seg := range strings.Split(spec, "/") {
+		if seg == "template" || seg == "templates" {
+			return true
+		}
+	}
+	return false
+}
+
+func isTemplate(path string) bool {
+	for _, marker := range []string{"/template/", "/templates/"} {
+		if strings.Contains(path, marker) {
+			return true
+		}
+	}
+	return strings.HasPrefix(path, "template/") || strings.HasPrefix(path, "templates/")
 }
 
 // UnresolvedSummary is a one-line explanation of the unresolved rate, or "" if

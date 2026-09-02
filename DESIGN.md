@@ -622,3 +622,57 @@ executing a stranger's code, which is not a trade this tool makes.
 
 That is the honest line between the two: **a compiled file has a source you can find; a generated
 file does not exist yet.** cairn resolves the first and reports the second.
+
+---
+
+## Driving the rate down
+
+Nine real repositories, 75,680 imports. Each round of "what is still unresolved and why" found a
+resolution rule that was missing rather than a repo that was broken.
+
+| fix | effect |
+|---|---|
+| `.d.ts` in the extension ladder | astro 18→13, nx 52→30, vue 46→27, tanstack 15→5 |
+| unbuilt output → source twin | astro 935→18 |
+| package's own bundle → package entry | vue-core 27→1 |
+| relative path into `node_modules` → the package | astro, nx |
+| root-absolute `/x.svg` → nearest project's `public/` | turborepo |
+
+**Declaration files were the largest single miss.** A repo importing `./utils` where only
+`utils.d.ts` exists is entirely normal — ambient typings, generated declarations, `.d.ts`-only test
+suites. They go last in the ladder, because an implementation should always beat its declaration.
+
+**A package importing its own bundle** — `./dist/compiler-core.cjs.prod.js` — has no per-file source
+twin, because the bundle is built from all of `src`. The package's own entry point is the right
+endpoint: the import means "this package", and that is where its code starts.
+
+**Static assets are relative to the project, not the repository.** `/typescript.svg` imported from
+`examples/with-vite-react/apps/web/src/main.tsx` lives in that app's `public/`, not the monorepo's.
+The nearest project root wins, the same way the nearest tsconfig does.
+
+## Where it stops, and why
+
+**Four imports out of 75,680 remain unexplained**, and each was checked by hand against the disk:
+a Svelte playground referencing an `App.svelte` that is not there, an Nx `globals.d.ts` pointing at a
+removed directory, a Turborepo docs page importing a JSON file that does not exist. They are broken
+imports in those repositories.
+
+Everything else that does not resolve is *named*:
+
+| cause | meaning |
+|---|---|
+| test fixtures | the import is meant to fail; that is the test |
+| scaffolding templates | the file appears when the template is used |
+| codegen output | written by a framework or generator, never committed |
+| an entire directory tree is absent | produced by a build — nobody typos the same path 4,611 times |
+| native binaries | for platforms other than this one |
+| build output with no source | run the repo's build |
+
+The threshold for "systematic absence" is ten imports sharing a prefix. Set it lower and real broken
+imports get excused; at ten, a genuine mistake still stands out as itself. There is a test for both
+directions.
+
+**Zero is the wrong target.** Astro's repository contains
+`e2e/fixtures/errors/src/pages/import-not-found.astro`, whose entire purpose is to import something
+that is not there. Resolving it would mean the tool had started lying, and every number above it
+would stop meaning anything.

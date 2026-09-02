@@ -83,9 +83,21 @@ type Result struct {
 
 // extensionLadder is tried in order when a specifier has no usable extension.
 //
-// Order matters: TypeScript before JavaScript, because a repo mid-migration
-// often has both utils.ts and a stale utils.js, and the compiler prefers .ts.
-var extensionLadder = []string{".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".json"}
+// Order matters twice over. TypeScript comes before JavaScript, because a repo
+// mid-migration often has both utils.ts and a stale utils.js, and the compiler
+// prefers .ts. And declaration files come last, because a .d.ts describes an
+// implementation that may also be present — if utils.ts exists, that is the
+// file you want.
+//
+// Declaration files must be here at all, though. A repo importing "./utils"
+// where only utils.d.ts exists is entirely normal — ambient typings, generated
+// declarations, .d.ts-only test suites — and leaving them out accounted for
+// most of what was still unresolved across Astro, Nx, Vue and TanStack Query.
+var extensionLadder = []string{
+	".ts", ".tsx", ".mts", ".cts",
+	".js", ".jsx", ".mjs", ".cjs", ".json",
+	".d.ts", ".d.mts", ".d.cts",
+}
 
 // buildToSource maps a build-output directory name onto the source directories
 // it is usually compiled from.
@@ -112,6 +124,33 @@ var buildToSource = map[string][]string{
 	"types": {"src", "source"},
 }
 
+// staticDirs are served at the site root by the common frameworks.
+var staticDirs = []string{"public", "static", "assets"}
+
+// projectRootsFrom lists the candidate site roots for a file, nearest first:
+// every ancestor directory holding a package.json, then the repository root.
+func (r *Resolver) projectRootsFrom(fromFile string) []string {
+	var out []string
+	dir := filepath.Dir(filepath.Join(r.root, filepath.FromSlash(fromFile)))
+	for {
+		if _, ok := r.dirIndex(dir)["package.json"]; ok {
+			out = append(out, dir)
+		}
+		if dir == r.root || len(dir) <= len(r.root) {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	if len(out) == 0 || out[len(out)-1] != r.root {
+		out = append(out, r.root)
+	}
+	return out
+}
+
 // platformSuffixes are the qualifiers bundlers try before the plain filename.
 //
 // React Native resolves "./Button" to Button.ios.tsx on iOS and
@@ -130,10 +169,10 @@ var platformSuffixes = []string{".native", ".ios", ".android", ".web", ".macos",
 // disk is x.ts — the specifier describes the output, not the source. Miss this
 // and every ESM-strict TypeScript repo looks broken.
 var jsToTS = map[string][]string{
-	".js":  {".ts", ".tsx"},
+	".js":  {".ts", ".tsx", ".d.ts"},
 	".jsx": {".tsx"},
-	".mjs": {".mts"},
-	".cjs": {".cts"},
+	".mjs": {".mts", ".d.mts"},
+	".cjs": {".cts", ".d.cts"},
 }
 
 // nodeBuiltins is the set of module names Node provides itself.
@@ -364,11 +403,39 @@ func (r *Resolver) Resolve(fromFile, specifier string) Result {
 
 	// 2. relative or absolute path
 	if strings.HasPrefix(specifier, ".") || strings.HasPrefix(specifier, "/") {
+		// A relative path that reaches into node_modules is a package import
+		// written the long way — "../../node_modules/astro/dist/transitions".
+		// node_modules is never walked, so the path can never resolve to a
+		// file; naming the package is both resolvable and the truer answer.
+		if name, sub, ok := packageFromNodeModulesPath(specifier); ok {
+			return Result{Kind: ToPackage, Package: name, Subpath: sub, Via: "node-modules-path"}
+		}
 		base := filepath.Dir(filepath.Join(r.root, filepath.FromSlash(fromFile)))
 		if strings.HasPrefix(specifier, "/") {
 			base = r.root
 		}
 		target := filepath.Join(base, filepath.FromSlash(specifier))
+
+		// A root-absolute specifier usually names a static asset, and every
+		// framework serves those from a directory rather than from the repo
+		// root: Vite, Next and Astro use public/, SvelteKit uses static/.
+		// "/vite.svg" is public/vite.svg on disk, and resolving it against the
+		// root alone finds nothing.
+		if strings.HasPrefix(specifier, "/") {
+			// Searched from the nearest project root outward, not from the repo
+			// root. In a monorepo "/typescript.svg" imported from
+			// examples/with-vite-react/apps/web/src/main.tsx lives in that
+			// app's own public/ directory — the site root is the app, not the
+			// repository. Same principle as the nearest tsconfig winning.
+			for _, projectRoot := range r.projectRootsFrom(fromFile) {
+				for _, dir := range staticDirs {
+					if res, ok := r.tryFile(filepath.Join(projectRoot, dir, filepath.FromSlash(specifier))); ok {
+						res.Via = "static-asset"
+						return res
+					}
+				}
+			}
+		}
 		if res, ok := r.tryFile(target); ok {
 			// An import may not climb out of the repository. Allowing it would
 			// put nodes with "../" paths into the graph, which every traversal
@@ -565,6 +632,19 @@ func (r *Resolver) trySourceTwin(abs string) (Result, bool) {
 			res.FromBuildOutput = true
 			return res, true
 		}
+
+		// Last resort: a bundle whose filename encodes the format rather than a
+		// source path — "dist/compiler-core.cjs.prod.js", built from the whole
+		// of src. There is no per-file twin, but the package's own entry point
+		// is the right endpoint: the import means "this package", and that is
+		// where its code starts.
+		pkgDir := filepath.Join(r.root, filepath.Join(parts[:i]...))
+		for _, entry := range []string{"src/index", "src/main", "index"} {
+			if res, ok := r.tryFileNoTwin(filepath.Join(pkgDir, filepath.FromSlash(entry))); ok {
+				res.FromBuildOutput = true
+				return res, true
+			}
+		}
 	}
 	return Result{}, false
 }
@@ -657,6 +737,20 @@ func (r *Resolver) rel(abs string) string {
 		return filepath.ToSlash(abs)
 	}
 	return filepath.ToSlash(rel)
+}
+
+// packageFromNodeModulesPath extracts the package named by a path that walks
+// into node_modules.
+func packageFromNodeModulesPath(spec string) (name, subpath string, ok bool) {
+	i := strings.LastIndex(spec, "node_modules/")
+	if i < 0 {
+		return "", "", false
+	}
+	name, subpath = splitPackage(spec[i+len("node_modules/"):])
+	if name == "" {
+		return "", "", false
+	}
+	return name, subpath, true
 }
 
 // splitPackage separates a bare specifier into package name and subpath, and
