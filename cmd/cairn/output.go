@@ -789,7 +789,7 @@ func printDrift(r *drift.Report) {
 	fmt.Printf("coupling: a change reaches %.0f%% of the repository (was %.0f%%), median over %d files\n",
 		r.Coupling.Head*100, r.Coupling.Base*100, r.Coupling.Sampled)
 	if r.Regressions > 0 {
-		fmt.Printf("\n%d regression%s\n", r.Regressions, plural(r.Regressions, "s"))
+		fmt.Printf("\n%s\n", plural(r.Regressions, "regression"))
 	}
 }
 
@@ -830,9 +830,9 @@ func runGrep(res *scan.Result, pattern, anchor string, connected, ignoreCase boo
 		case h.Hops == 0:
 			tag = "the file itself"
 		case h.Hops > 0 && h.Direction == "upstream":
-			tag = fmt.Sprintf("%d hop%s up — breaks if you change it", h.Hops, plural(h.Hops, "s"))
+			tag = plural(h.Hops, "hop") + " up — breaks if you change it"
 		case h.Hops > 0:
-			tag = fmt.Sprintf("%d hop%s down — the target uses it", h.Hops, plural(h.Hops, "s"))
+			tag = plural(h.Hops, "hop") + " down — the target uses it"
 		}
 		fmt.Printf("%s:%d  %s\n", h.Path, h.Line, tag)
 		fmt.Printf("    %s\n", h.Text)
