@@ -145,6 +145,7 @@
     padding:44px 0 90px;
   }
   body.report #report { display:block; }
+  body.map .rail, body.map #chips { display:none !important; }
   body.report main, body.report #chips, body.report .legend { display:none !important; }
   .rp { max-width:760px; margin:0 auto; padding:0 28px; }
   .rp h1 { font:400 42px/1.1 var(--font-serif); letter-spacing:-0.045em;
@@ -180,6 +181,9 @@
     border-radius:var(--radius-sm); background:none; color:var(--ink-2);
   }
   .crumb:last-of-type { color:var(--ink); font-weight:500; }
+  .crumb.back { border-color:var(--rule-strong); color:var(--ink-2);
+                font-size:14px; line-height:1; padding:3px 9px; margin-right:5px; }
+  .crumb:not(.back):hover { text-decoration:underline; }
   .crumb:hover { background:var(--surface); border-color:var(--rule-strong); color:var(--accent); }
   #chips .sep { color:var(--ink-faint); font:12px var(--font-mono); }
   .crumb-count { margin-left:auto; font:11.5px var(--font-mono); color:var(--ink-faint); }
@@ -192,7 +196,9 @@
   #rail-out { border-left:1px solid var(--rule); }
   .rail h4 { font:550 10px/1.35 var(--font-sans); letter-spacing:0.05em; word-break:break-all;
              text-transform:uppercase; color:var(--ink-faint); margin:0 0 9px 4px; }
-  .rail-none { font:11.5px var(--font-mono); color:var(--ink-faint); margin:0 0 0 4px; }
+  .rail-scope { font:11px var(--font-mono); color:var(--ink-faint); margin:-6px 0 10px 4px;
+                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .rail-none { font:11.5px var(--font-sans); color:var(--ink-faint); margin:0 0 0 4px; line-height:1.45; }
   .rail-item {
     display:flex; width:100%; gap:6px; align-items:baseline; text-align:left;
     font:11.5px var(--font-mono); padding:4px 5px; margin-bottom:1px;
@@ -255,6 +261,7 @@
   <button id="theme" title="light / dark">◐</button>
   <div class="tabs">
     <button class="tab on" data-tab="graph">graph</button>
+    <button class="tab" data-tab="map">whole repo</button>
     <button class="tab" data-tab="report">report</button>
   </div>
 </header>
@@ -492,7 +499,24 @@ function synthModule(m) {
 
 // The boxes of the current scope. At the root these are the modules the Go
 // side computed; deeper down they are the immediate children of the focus.
+// Whole-repo mode: every file at once, in dependency columns, tinted by the
+// module it belongs to.
+//
+// The scoped view answers "what is this part made of". It cannot answer "what
+// does the whole thing look like", and that picture is worth having — both to
+// get a feel for a repository you have never seen and because it is the one
+// image worth showing someone. Edges stay withheld here; nine hundred boxes
+// with their lines drawn is the hairball this whole design exists to avoid.
+let whole = false;
+
+function wholeChildren() {
+  const out = [];
+  for (const n of files) { n.ldepth = n.depth; out.push(n); }
+  return out;
+}
+
 function scopeChildren() {
+  if (whole) return wholeChildren();
   if (focus.length === 0) {
     if (DATA.modules && DATA.modules.length) {
       const out = [];
@@ -646,6 +670,7 @@ function localDepths(kids, edges) {
 
 function relayout() {
   let kids = scopeChildren();
+  if (whole) for (const k of kids) k.tint = moduleIdOf(k.id);
   childMemo = new Map();
   railMemo = new Map();
 
@@ -697,7 +722,7 @@ function relayout() {
   for (const e of edges) { touched.add(e.from); touched.add(e.to); }
   const quiet = kids.filter(k => !touched.has(k.id));
   let quietBox = null;
-  if (quiet.length >= QUIET_MIN && quiet.length > kids.length * 0.5) {
+  if (!whole && quiet.length >= QUIET_MIN && quiet.length > kids.length * 0.5) {
     kids = kids.filter(k => touched.has(k.id));
     const nFiles = quiet.reduce((n, k) => n + (k.group ? k.count : 1), 0);
     quietBox = {
@@ -709,7 +734,7 @@ function relayout() {
     kids.push(quietBox);
   }
 
-  ROOMY = kids.length <= 16;
+  ROOMY = !whole && kids.length <= 16;
   localDepths(kids, edges);
   for (const k of kids) measureBox(k);
   const b = packChildren(kids);
@@ -723,7 +748,7 @@ function relayout() {
   const q = f => ns.length ? ns[Math.min(ns.length - 1, Math.floor(ns.length * f))] : 1;
   const wt = [Math.max(2, q(0.6)), Math.max(4, q(0.9))];
 
-  const dense = edges.length > EDGE_LIMIT;
+  const dense = whole || edges.length > EDGE_LIMIT;
   view = { focus: focus.slice(), boxes: kids, edges, dense, quiet: quietBox, width: b.w, height: b.h,
            layers: columnsOf(kids), index: new Map(kids.map(x => [x.id, x])),
            cross, audit, wt, rails: buildRails(cross) };
@@ -818,7 +843,10 @@ function fitParams() {
   const HEAD = 46;   // room for the column numbers above the graph
   const w = Math.max(view.width, 1) + 24, h = Math.max(view.height, 1) + 24 + HEAD, pad = 30;
   const both = Math.min((VW - pad * 2) / w, (VH - pad * 2) / h);
-  let ns = both >= READABLE ? both : Math.max(READABLE, (VH - pad * 2) / h);
+  // The readability floor exists so a scoped view never fits itself down to
+  // unreadable specks. The whole-repo map is the one place where seeing all of
+  // it *is* the point, so there it fits honestly and you zoom in to read.
+  let ns = whole || both >= READABLE ? both : Math.max(READABLE, (VH - pad * 2) / h);
   // The old ceiling was set when the whole repository was on screen at once.
   // A module view is seven boxes, and holding it at 1.1 leaves most of the
   // window empty around a small diagram — the zoom should follow how much
@@ -1094,6 +1122,24 @@ function drawWells(x0, y0, x1, y1) {
   }
 }
 
+// A colour per module, so the whole-repo map reads as regions rather than a
+// wall of identical grey. Hues are spread evenly over the modules that exist
+// rather than hashed, because a hash puts two of them next to each other often
+// enough to be worth avoiding.
+const tints = new Map();
+function tintOf(id) {
+  if (!id) return C.surface;
+  let c = tints.get(id);
+  if (c) return c;
+  const mods = (DATA.modules || []).map(m => m.id);
+  const i = Math.max(0, mods.indexOf(id));
+  const hue = Math.round((i / Math.max(1, mods.length)) * 330);
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  c = `hsl(${hue} ${dark ? 34 : 62}% ${dark ? 24 : 87}%)`;
+  tints.set(id, c);
+  return c;
+}
+
 function drawBoxes(x0, y0, x1, y1) {
   ctx.font = '12px "Geist Mono", ui-monospace, Menlo, monospace';
   ctx.textBaseline = 'middle';
@@ -1111,7 +1157,8 @@ function drawBoxes(x0, y0, x1, y1) {
 
     // Container: a light well with a title bar, so its contents read as inside.
     ctx.fillStyle = x.group ? C.surface2
-      : x.kind === 'package' ? C.pkgSoft : isSel ? C.accentSoft : C.surface;
+      : x.kind === 'package' ? C.pkgSoft : isSel ? C.accentSoft
+      : whole ? tintOf(x.tint) : C.surface;
     // Entry points get a marker, not a coloured outline. Outlining them turned
     // most of a repo blue, which is the same as marking nothing.
     ctx.strokeStyle = isSel || isHover ? C.accent : x.dead ? C.crit
@@ -1427,7 +1474,12 @@ function renderCrumbs() {
   // changes the height of the stage, and nothing re-sizes the canvas when it
   // does, so the drawing surface goes stale until the next window resize.
   bar.style.display = 'flex';
-  const parts = [`<button class="crumb" data-up="0">${esc(repoName())}</button>`];
+  // A back button, because a breadcrumb is only obvious once you already know
+  // it is one. Two levels down inside examples/ there was nothing on screen
+  // that looked like a way out.
+  const parts = [];
+  if (focus.length) parts.push(`<button class="crumb back" data-up="${focus.length - 1}" title="back (esc)">←</button>`);
+  parts.push(`<button class="crumb" data-up="0">${esc(repoName())}</button>`);
   for (let i = 0; i < focus.length; i++) {
     parts.push('<span class="sep">/</span>');
     parts.push(`<button class="crumb" data-up="${i + 1}">${esc(focus[i])}</button>`);
@@ -1455,13 +1507,17 @@ function renderRails() {
     const list = view.rails ? view.rails[side] : [];
     const sel = selected && view.cross ? view.cross.get(selected) : null;
     const hot = sel ? sel[side] : null;
+    // The two rails are the same question asked in opposite directions, so
+    // they are worded and built the same way.
+    const title = side === 'in' ? 'depended on by' : 'depends on';
     const here = focus.length ? focus[focus.length - 1] + '/' : repoName();
-    const title = side === 'in' ? 'into ' + here : 'out of ' + here;
+    const head = `<h4>${title}</h4><p class="rail-scope">${esc(here)}</p>`;
     if (!list.length) {
-      el.innerHTML = `<h4>${title}</h4><p class="rail-none">nothing crosses here</p>`;
+      el.innerHTML = head + `<p class="rail-none">` +
+        (side === 'in' ? 'nothing outside imports this' : 'imports nothing outside') + `</p>`;
       continue;
     }
-    el.innerHTML = `<h4>${title}</h4>` + list.slice(0, 14).map(r => {
+    el.innerHTML = head + list.slice(0, 14).map(r => {
       const dim = hot && !hot.has(r.id) ? ' dim' : '';
       const on = hot && hot.has(r.id) ? ' hot' : '';
       return `<button class="rail-item ${side}${dim}${on}" data-rail="${esc(r.id)}">` +
@@ -1700,6 +1756,7 @@ document.getElementById('hint').textContent = DATA.truncated
 
 // Light by default, matching the site; the choice sticks per browser.
 function setTheme(t) {
+  tints.clear();
   document.documentElement.setAttribute('data-theme', t);
   try { localStorage.setItem('cairn-theme', t); } catch (e) {}
   readColors();
@@ -1798,7 +1855,15 @@ function renderReport() {
 }
 
 function showTab(which) {
+  const wasWhole = whole;
+  whole = which === 'map';
   document.body.classList.toggle('report', which === 'report');
+  document.body.classList.toggle('map', whole);
+  if (whole !== wasWhole) {
+    focus = []; select(null);
+    relayout();
+    resize(); fit(false);
+  }
   // ── search ──────────────────────────────────────────────────────────────────
 //
 // The box in the header had never been wired to anything. It set a variable
