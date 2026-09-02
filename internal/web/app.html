@@ -3,140 +3,179 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Alike&display=swap">
 <title>cairn - {{.Root}}</title>
 <style>
+  /* Palette lifted from mihaiposea.com: warm stone paper, near-black ink,
+     amber and brand blue as the only two accents. The site ships light only,
+     so the dark variant is built from its own brand tokens - brand-black
+     #0b0b0b, brand-white #f6f5f3, brand-grey #cdc7bd - rather than invented. */
   :root {
-    --paper:#F7F8F7; --surface:#fff; --surface-2:#EFF2F1; --ink:#141A19;
-    --ink-soft:#4E5957; --rule:#DCE2E0; --accent:#146B62; --accent-soft:#E2EFEC;
-    --crit:#A32B22; --pkg:#5B4A8A; --pkg-soft:#ECE7F5; --edge:#C9D2CF;
-    --out:#146B62; --in:#9A5B18;
+    --paper:#fafaf8; --surface:#ffffff; --surface-2:#f0efed; --surface-3:#ececea;
+    --ink:#1c1917; --ink-2:#44403c; --ink-soft:#78716c; --ink-faint:#8a827c;
+    --rule:#e7e5e4; --rule-strong:#d6d3d1;
+    --accent:#0a17b6; --accent-soft:#e8eaf9; --accent-3:#006afe;
+    --out:#0a17b6; --in:#d97706; --in-soft:#fdf3e3;
+    --crit:#dc2626; --pkg:#57534e; --pkg-soft:#f5f5f4;
+    --edge:#d6d3d1;
+    --radius:10px; --radius-sm:6px;
+    --font-sans:"Geist","Geist Fallback",ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --font-mono:"Geist Mono","Geist Mono Fallback",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --font-serif:"Alike",ui-serif,Georgia,"Times New Roman",serif;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --paper:#101413; --surface:#171D1C; --surface-2:#1E2625; --ink:#E7ECEA;
-      --ink-soft:#97A3A0; --rule:#2B3432; --accent:#5CC4B6; --accent-soft:#14302C;
-      --crit:#E88376; --pkg:#B3A3DE; --pkg-soft:#241F33; --edge:#2B3432;
-      --out:#5CC4B6; --in:#E0A45C;
-    }
+  /* The site ships light only, so light is the default here too. Dark is built
+     from the same brand tokens - brand-black #0b0b0b, brand-white #f6f5f3,
+     brand-grey #cdc7bd - rather than invented, and is opt-in. */
+  :root[data-theme="dark"] {
+      --paper:#0b0b0b; --surface:#141312; --surface-2:#1c1b19; --surface-3:#232120;
+      --ink:#f6f5f3; --ink-2:#cdc7bd; --ink-soft:#9a938a; --ink-faint:#7d766e;
+      --rule:#2a2724; --rule-strong:#3a3633;
+      --accent:#7f92ff; --accent-soft:#181c33; --accent-3:#4d9bff;
+      --out:#7f92ff; --in:#e0a45c; --in-soft:#2a2115;
+      --crit:#f0736a; --pkg:#cdc7bd; --pkg-soft:#1c1b19;
+    --edge:#332f2c;
   }
   * { box-sizing:border-box; }
   html,body { height:100%; margin:0; overflow:hidden; }
   body {
-    background:var(--paper); color:var(--ink); display:flex; flex-direction:column;
-    font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--paper); color:var(--ink);
+    display:flex; flex-direction:column;
+    font:14px/1.5 var(--font-sans); -webkit-font-smoothing:antialiased;
+    letter-spacing:-0.011em;
   }
+  ::selection { background:rgba(135,206,250,.35); color:#6baed6; }
+
   header {
-    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
-    padding:10px 16px; border-bottom:1px solid var(--rule); background:var(--surface);
+    display:flex; align-items:center; gap:18px; flex-wrap:wrap;
+    padding:13px 22px; border-bottom:1px solid var(--rule); background:var(--surface);
     flex-shrink:0;
   }
-  .brand { font-weight:700; font-size:14px; letter-spacing:-0.01em; }
+  .brand {
+    font-family:var(--font-serif); font-size:23px; line-height:1;
+    letter-spacing:-0.05em; color:var(--ink);
+  }
   .repo {
-    font:12px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink-soft);
-    max-width:min(280px, 20vw); overflow:hidden; text-overflow:ellipsis;
+    font:12px var(--font-mono); color:var(--ink-faint);
+    max-width:min(300px,20vw); overflow:hidden; text-overflow:ellipsis;
     white-space:nowrap; direction:rtl;
   }
-  .stats { display:flex; gap:14px; margin-left:auto; flex-wrap:wrap;
-           font:11px ui-monospace,Menlo,monospace; color:var(--ink-soft); }
-  .stats b { color:var(--ink); font-weight:600; }
-  .stats .warn b { color:var(--crit); }
+  .stats { display:flex; gap:18px; margin-left:auto; flex-wrap:wrap;
+           font:12px var(--font-sans); color:var(--ink-soft); letter-spacing:0; }
+  .stats b { color:var(--ink); font-weight:550; font-variant-numeric:tabular-nums; }
+  .stats .warn b { color:var(--in); }
+
   main { flex:1; display:flex; min-height:0; }
-  #stage { flex:1; position:relative; overflow:hidden; cursor:grab; }
+  #stage { flex:1; position:relative; overflow:hidden; cursor:grab; background:var(--paper); }
   #stage.drag { cursor:grabbing; }
   #c { display:block; position:absolute; inset:0; }
   #mini {
-    position:absolute; right:12px; bottom:12px; width:190px; height:120px;
-    border:1px solid var(--rule); background:var(--surface); opacity:.94; cursor:pointer;
-    border-radius:3px;
+    position:absolute; right:16px; bottom:16px; width:198px; height:124px;
+    border:1px solid var(--rule); background:var(--surface); cursor:pointer;
+    border-radius:var(--radius-sm); box-shadow:0 1px 3px rgba(28,25,23,.06);
   }
+
   aside {
-    width:clamp(230px, 24vw, 330px); border-left:1px solid var(--rule);
-    background:var(--surface); padding:14px 16px; overflow:auto; flex-shrink:0;
+    width:clamp(250px,25vw,360px); border-left:1px solid var(--rule);
+    background:var(--surface); padding:18px 20px 40px; overflow:auto; flex-shrink:0;
   }
-  aside h2 { font:600 13px/1.35 ui-sans-serif,sans-serif; margin:0 0 2px; word-break:break-all; }
-  .dir { font:11px ui-monospace,Menlo,monospace; color:var(--ink-soft); word-break:break-all; margin-bottom:10px; }
-  .kind { font:10px ui-monospace,Menlo,monospace; color:var(--ink-soft);
-          text-transform:uppercase; letter-spacing:.09em; }
-  .row { display:flex; justify-content:space-between; padding:5px 0;
-         border-bottom:1px solid var(--rule); font:11px ui-monospace,Menlo,monospace; }
-  .row span:last-child { color:var(--ink); font-weight:600; }
+  aside h2 { font:550 17px/1.25 var(--font-sans); letter-spacing:-0.03em;
+             margin:2px 0 3px; word-break:break-all; color:var(--ink); }
+  .dir { font:11px var(--font-mono); color:var(--ink-faint); word-break:break-all; margin-bottom:14px; }
+  .kind { font:11px var(--font-sans); color:var(--ink-faint); letter-spacing:0.02em; }
+  .row { display:flex; justify-content:space-between; align-items:baseline; padding:7px 0;
+         border-bottom:1px solid var(--rule); font:13px var(--font-sans); }
   .row span:first-child { color:var(--ink-soft); }
-  h3 { font:600 10px/1 ui-monospace,Menlo,monospace; text-transform:uppercase;
-       letter-spacing:.09em; color:var(--ink-soft); margin:16px 0 6px; }
+  .row span:last-child { color:var(--ink); font-weight:550; font-variant-numeric:tabular-nums; }
+  h3 { font:550 11px/1 var(--font-sans); letter-spacing:0.04em; text-transform:uppercase;
+       color:var(--ink-faint); margin:22px 0 8px; }
+  h3 .k { display:inline-block; width:7px; height:7px; border-radius:2px;
+          margin-right:6px; vertical-align:0px; }
+  h3 .k.in { background:var(--in); } h3 .k.out { background:var(--out); }
   ul { list-style:none; margin:0; padding:0; }
-  li { font:11px ui-monospace,Menlo,monospace; padding:3px 0; color:var(--ink);
-       cursor:pointer; word-break:break-all; }
+  li { font:12.5px var(--font-sans); padding:5px 0; color:var(--ink-2);
+       cursor:pointer; word-break:break-all; border-bottom:1px solid var(--rule); }
   li:hover { color:var(--accent); }
-  li .d { color:var(--ink-soft); }
-  .note { background:var(--accent-soft); border-left:2px solid var(--accent);
-          padding:7px 9px; margin:10px 0 0; font-size:11px; color:var(--ink-soft); }
-  .note.bad { background:transparent; border-color:var(--crit); color:var(--crit); }
-  .imp { padding:5px 0; border-bottom:1px solid var(--rule); cursor:pointer; }
+  li .d { color:var(--ink-faint); font-size:11px; }
+
+  .imp { padding:8px 0; border-bottom:1px solid var(--rule); cursor:pointer; }
   .imp:hover .who { color:var(--accent); }
-  .imp .who { font:11px ui-monospace,Menlo,monospace; color:var(--ink); display:block; }
-  .imp .who .d { color:var(--ink-soft); }
+  .imp .who { font:12.5px var(--font-sans); color:var(--ink-2); display:block; }
+  .imp .who .d { color:var(--ink-faint); font-size:11px; }
   .imp code {
-    display:block; font:10.5px/1.5 ui-monospace,Menlo,monospace; color:var(--ink-soft);
-    background:var(--surface-2); padding:3px 6px; margin-top:3px; border-radius:2px;
-    white-space:pre; overflow-x:auto; border-left:2px solid var(--rule);
+    display:block; font:11px/1.55 var(--font-mono); color:var(--ink-2);
+    background:var(--surface-2); padding:6px 9px; margin-top:6px;
+    border-radius:var(--radius-sm); white-space:pre; overflow-x:auto;
+    border-left:2px solid var(--rule-strong);
   }
+  .imp:hover code { background:var(--surface-3); }
   .imp.in code { border-left-color:var(--in); }
   .imp.out code { border-left-color:var(--out); }
-  .imp .ln { color:var(--ink-soft); font-size:10px; float:right; }
-  h3 .k { display:inline-block; width:7px; height:7px; margin-right:5px; vertical-align:1px; }
-  h3 .k.in { background:var(--in); } h3 .k.out { background:var(--out); }
+  .imp .ln { color:var(--ink-faint); font:11px var(--font-mono); float:right; }
 
-  #code {
-    position:absolute; inset:0 0 0 auto; width:min(760px, 62vw); z-index:5;
-    background:var(--surface); border-left:1px solid var(--rule);
-    display:none; flex-direction:column; box-shadow:-16px 0 40px rgba(0,0,0,.22);
-  }
-  #code.on { display:flex; }
-  #code header {
-    display:flex; align-items:center; gap:10px; padding:8px 14px;
-    border-bottom:1px solid var(--rule); background:var(--surface-2);
-  }
-  #code .path { font:11px ui-monospace,Menlo,monospace; color:var(--ink-soft);
-                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  #code .body { flex:1; overflow:auto; padding:8px 0 40px; }
-  #code table { border-collapse:collapse; width:100%; font:11.5px/1.6 ui-monospace,Menlo,monospace; }
-  #code td { padding:0 10px; vertical-align:top; white-space:pre; }
-  #code td.n { text-align:right; color:var(--ink-soft); user-select:none; width:1%;
-               border-right:1px solid var(--rule); }
-  #code tr.hit { background:var(--accent-soft); }
-  #code tr.hit td.n { color:var(--accent); font-weight:600; }
-  #code tr.here { background:var(--accent-soft); outline:1px solid var(--accent); }
-  .empty { color:var(--ink-soft); font-size:12px; }
-  .empty b { color:var(--ink); display:block; margin-bottom:8px; font-size:13px; }
+  .note { background:var(--accent-soft); border-left:2px solid var(--accent);
+          padding:9px 11px; margin:12px 0 0; font-size:12.5px; color:var(--ink-2);
+          border-radius:0 var(--radius-sm) var(--radius-sm) 0; }
+  .note.bad { background:transparent; border-color:var(--crit); color:var(--crit); }
+  .empty { color:var(--ink-soft); font-size:13px; }
+  .empty b { color:var(--ink); display:block; margin-bottom:8px;
+             font:550 15px/1.3 var(--font-sans); letter-spacing:-0.02em; }
+
   input, button {
-    font:11px ui-monospace,Menlo,monospace; padding:4px 8px; border:1px solid var(--rule);
-    border-radius:3px; background:var(--paper); color:var(--ink);
+    font:12.5px var(--font-sans); padding:6px 11px; border:1px solid var(--rule-strong);
+    border-radius:var(--radius-sm); background:var(--surface); color:var(--ink);
   }
-  input { width:170px; }
+  input { width:190px; }
+  input::placeholder { color:var(--ink-faint); }
+  input:focus { outline:none; border-color:var(--accent); }
   button { cursor:pointer; }
   button:hover { border-color:var(--accent); color:var(--accent); }
-  .legend { display:flex; gap:12px; padding:6px 16px; border-top:1px solid var(--rule);
-            background:var(--surface); font:10px ui-monospace,Menlo,monospace;
-            color:var(--ink-soft); flex-shrink:0; align-items:center; }
-  .sw { display:inline-block; width:8px; height:8px; margin-right:4px; border:1.2px solid var(--rule);
-        vertical-align:-1px; }
-  .sw.entry { border-color:var(--accent); }
-  .sw.dead { border-color:var(--crit); border-style:dashed; }
-  .sw.pkg { border-color:var(--pkg); background:var(--pkg-soft); }
-  .hint { margin-left:auto; }
+
   #chips {
-    display:none; gap:6px; align-items:center; flex-wrap:wrap;
-    padding:6px 16px; border-bottom:1px solid var(--rule); background:var(--surface-2);
+    display:none; gap:7px; align-items:center; flex-wrap:wrap;
+    padding:9px 22px; border-bottom:1px solid var(--rule); background:var(--surface-2);
     flex-shrink:0;
   }
-  .chips-label { font:10px ui-monospace,Menlo,monospace; color:var(--ink-soft);
-                 text-transform:uppercase; letter-spacing:.09em; margin-right:2px; }
+  .chips-label { font:11px var(--font-sans); color:var(--ink-faint);
+                 letter-spacing:0.04em; text-transform:uppercase; margin-right:3px; }
   .chip {
-    font:10px ui-monospace,Menlo,monospace; padding:3px 7px; border:1px solid var(--rule);
-    border-radius:10px; background:var(--surface); color:var(--ink-soft); cursor:pointer;
+    font:11.5px var(--font-mono); padding:4px 9px; border:1px solid var(--rule-strong);
+    border-radius:999px; background:var(--surface); color:var(--ink-soft); cursor:pointer;
   }
   .chip:hover { border-color:var(--accent); color:var(--accent); }
   .chip.alt { border-style:dashed; }
+
+  .legend { display:flex; gap:16px; padding:9px 22px; border-top:1px solid var(--rule);
+            background:var(--surface); font:11.5px var(--font-sans);
+            color:var(--ink-faint); flex-shrink:0; align-items:center; }
+  .sw { display:inline-block; width:9px; height:9px; margin-right:6px;
+        border:1.2px solid var(--rule-strong); border-radius:2px; vertical-align:-1px; }
+  .sw.entry { border-color:var(--rule-strong); box-shadow:inset 2px 0 0 var(--accent); }
+  .sw.dead { border-color:var(--crit); border-style:dashed; }
+  .sw.pkg { border-color:var(--pkg); background:var(--pkg-soft); }
+  .hint { margin-left:auto; }
+
+  #code {
+    position:absolute; inset:0 0 0 auto; width:min(780px,62vw); z-index:5;
+    background:var(--surface); border-left:1px solid var(--rule);
+    display:none; flex-direction:column; box-shadow:-20px 0 50px rgba(28,25,23,.14);
+  }
+  #code.on { display:flex; }
+  #code header {
+    display:flex; align-items:center; gap:12px; padding:10px 16px;
+    border-bottom:1px solid var(--rule); background:var(--surface-2);
+  }
+  #code .path { font:11.5px var(--font-mono); color:var(--ink-soft);
+                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #code .body { flex:1; overflow:auto; padding:10px 0 48px; }
+  #code table { border-collapse:collapse; width:100%; font:12px/1.65 var(--font-mono); }
+  #code td { padding:0 14px; vertical-align:top; white-space:pre; color:var(--ink-2); }
+  #code td.n { text-align:right; color:var(--ink-faint); user-select:none; width:1%;
+               border-right:1px solid var(--rule); font-variant-numeric:tabular-nums; }
+  #code tr.hit { background:var(--in-soft); }
+  #code tr.hit td.n { color:var(--in); font-weight:600; }
+  #code tr.here { background:var(--accent-soft); box-shadow:inset 2px 0 0 var(--accent); }
 </style>
 </head>
 <body>
@@ -145,6 +184,7 @@
   <span class="repo" id="repo" title="{{.Root}}">{{.Root}}</span>
   <input id="q" placeholder="filter" autocomplete="off">
   <button id="fit">fit</button>
+  <button id="theme" title="light / dark">◐</button>
   <div class="stats" id="stats"></div>
 </header>
 <div id="chips"></div>
@@ -384,7 +424,9 @@ let C = {};
 function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 function readColors() {
   C = { paper: css('--paper'), surface: css('--surface'), surface2: css('--surface-2'),
-        ink: css('--ink'), inkSoft: css('--ink-soft'), rule: css('--rule'),
+        surface3: css('--surface-3'),
+        ink: css('--ink'), ink2: css('--ink-2'), inkSoft: css('--ink-soft'),
+        inkFaint: css('--ink-faint'), rule: css('--rule'), ruleStrong: css('--rule-strong'),
         accent: css('--accent'), accentSoft: css('--accent-soft'), crit: css('--crit'),
         pkg: css('--pkg'), pkgSoft: css('--pkg-soft'), edge: css('--edge'),
         out: css('--out'), in: css('--in') };
@@ -483,19 +525,19 @@ function drawLayerHeads() {
 
   for (let i = 0; i < L.length; i++) {
     const l = L[i];
-    ctx.fillStyle = C.inkSoft;
-    ctx.globalAlpha = 0.5;
-    ctx.fillRect(l.x, y + 8, l.w, 1 / s * 1.2);
+    ctx.fillStyle = C.ruleStrong;
+    ctx.globalAlpha = 1;
+    ctx.fillRect(l.x, y + 9, l.w, Math.max(1, 1 / s));
     ctx.globalAlpha = 1;
 
-    ctx.font = '600 13px ui-monospace, Menlo, monospace';
+    ctx.font = '550 14px "Geist", ui-sans-serif, sans-serif';
     ctx.fillStyle = C.accent;
     const num = String(i + 1);
     ctx.fillText(num, l.x, y);
 
     if (s > 0.42) {
-      ctx.font = '11px ui-monospace, Menlo, monospace';
-      ctx.fillStyle = C.inkSoft;
+      ctx.font = '12px "Geist", ui-sans-serif, sans-serif';
+      ctx.fillStyle = C.inkFaint;
       const caption = i === 0
         ? 'nothing imports these'
         : i === 1 ? 'imported by column 1' : `${i} imports deep`;
@@ -565,7 +607,7 @@ function edgePath(a, b, curved) {
 }
 
 function drawBoxes(x0, y0, x1, y1) {
-  ctx.font = '12px ui-monospace, Menlo, monospace';
+  ctx.font = '12px "Geist Mono", ui-monospace, Menlo, monospace';
   ctx.textBaseline = 'middle';
   const showText = s > 0.3;
 
@@ -581,11 +623,14 @@ function drawBoxes(x0, y0, x1, y1) {
     // Container: a light well with a title bar, so its contents read as inside.
     ctx.fillStyle = open ? C.paper : x.group ? C.surface2
       : x.kind === 'package' ? C.pkgSoft : isSel ? C.accentSoft : C.surface;
+    // Entry points get a marker, not a coloured outline. Outlining them turned
+    // most of a repo blue, which is the same as marking nothing.
     ctx.strokeStyle = isSel || isHover ? C.accent : x.dead ? C.crit
-      : x.entry ? C.accent : x.kind === 'package' ? C.pkg : C.rule;
+      : x.kind === 'package' ? C.pkg : C.ruleStrong;
 
+    // Rounded to the site's small radius; a 1px hairline at any zoom.
     ctx.beginPath();
-    ctx.rect(x.x, x.y, x.bw, x.bh);
+    ctx.roundRect(x.x, x.y, x.bw, x.bh, open ? 10 : 6);
     ctx.fill();
     if (x.dead && !x.group) ctx.setLineDash([4 / s, 3 / s]);
     ctx.lineWidth = (isSel ? 2.4 : isHover ? 1.8 : open ? 1.4 : x.group ? 1.3 : 1) / s;
@@ -593,8 +638,13 @@ function drawBoxes(x0, y0, x1, y1) {
     ctx.setLineDash([]);
 
     if (open) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(x.x, x.y, x.bw, x.bh, 10);
+      ctx.clip();
       ctx.fillStyle = C.surface2;
-      ctx.fillRect(x.x + 0.5, x.y + 0.5, x.bw - 1, HEADER);
+      ctx.fillRect(x.x, x.y, x.bw, HEADER);
+      ctx.restore();
       ctx.strokeStyle = C.rule;
       ctx.lineWidth = 1 / s;
       ctx.beginPath();
@@ -602,17 +652,26 @@ function drawBoxes(x0, y0, x1, y1) {
       ctx.stroke();
     }
 
+    // A short accent rule on the leading edge: present when you look for it,
+    // silent when you are not.
+    if (x.entry && !open) {
+      ctx.fillStyle = C.accent;
+      ctx.beginPath();
+      ctx.roundRect(x.x + 1.5, x.y + 5, 2.5, x.bh - 10, 2);
+      ctx.fill();
+    }
+
     if (showText) {
       if (x.text === undefined) layoutText(x);
       const cy = x.y + (open ? HEADER : x.bh) / 2;
       ctx.fillStyle = open ? C.inkSoft : C.ink;
-      ctx.fillText(open ? '▾ ' + x.base : x.base, x.x + 9, cy);
+      ctx.fillText(open ? '▾ ' + x.base : x.base, x.x + (x.entry && !open ? 12 : 9), cy);
       if (x.group) {
-        ctx.fillStyle = C.inkSoft;
+        ctx.fillStyle = C.inkFaint;
         const c = String(x.count);
         ctx.fillText(c, x.x + x.bw - 9 - ctx.measureText(c).width, cy);
       } else if (x.text) {
-        ctx.fillStyle = C.inkSoft;
+        ctx.fillStyle = C.inkFaint;
         ctx.fillText(x.text, x.x + x.textX, cy);
       }
     }
@@ -621,6 +680,7 @@ function drawBoxes(x0, y0, x1, y1) {
 }
 
 function layoutText(x) {
+  ctx.font = '12px "Geist Mono", ui-monospace, Menlo, monospace';
   const label = isOpen(x) ? '▾ ' + x.base : x.base;
   const bw = ctx.measureText(label).width;
   x.textX = 9 + bw + 7;
@@ -956,8 +1016,21 @@ document.getElementById('hint').textContent = DATA.truncated
   ? `${DATA.truncated} nodes not sent · f fit · c reset`
   : 'click a folder to open · title bar to close · f fit · c reset';
 
+// Light by default, matching the site; the choice sticks per browser.
+function setTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  try { localStorage.setItem('cairn-theme', t); } catch (e) {}
+  readColors();
+  for (const x of view.boxes) x.text = undefined;
+  draw();
+}
+let theme = 'light';
+try { theme = localStorage.getItem('cairn-theme') || 'light'; } catch (e) {}
+document.documentElement.setAttribute('data-theme', theme);
+document.getElementById('theme').onclick = () =>
+  setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+
 readColors();
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { readColors(); draw(); });
 addEventListener('resize', resize);
 autoExpand();
 relayout();
