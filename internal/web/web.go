@@ -98,6 +98,50 @@ type Payload struct {
 	// between two files is often deliberate; one between two modules means
 	// the boundary is not real.
 	ModuleCycles [][]string `json:"moduleCycles,omitempty"`
+
+	// Report is the readable account of the repository: what it is, and what
+	// is worth knowing about it. A count is not a finding — "cycles 5" tells
+	// nobody anything, so each of these names the thing and what it costs.
+	Report Report `json:"report"`
+}
+
+// Report is the second tab: findings, not counters.
+type Report struct {
+	Entries []EntryPoint `json:"entries"`
+	// EntryBail explains why dead-file analysis was refused, when it was.
+	EntryBail string `json:"entryBail,omitempty"`
+	// Cycles are import loops, as readable chains, worst first.
+	Cycles []Finding `json:"cycles"`
+	// Unreachable groups files nothing reaches by the directory holding them.
+	Unreachable []Finding `json:"unreachable"`
+	// Heavy are the files with the largest blast radius: change one and this
+	// many others are downstream of it.
+	Heavy []Finding `json:"heavy"`
+	// Boundary are imports reaching past a module entry point into its
+	// internals.
+	Boundary []Finding `json:"boundary"`
+	// UnresolvedBy groups what could not be resolved, by cause.
+	UnresolvedBy []Finding `json:"unresolvedBy"`
+}
+
+// EntryPoint is a file the outside world enters through, and why we think so.
+type EntryPoint struct {
+	File   string `json:"file"`
+	Reason string `json:"reason"`
+}
+
+// Finding is one row of the report: a thing, a number, and where to look.
+type Finding struct {
+	// Title names the thing, in the reader's terms.
+	Title string `json:"title"`
+	// Detail says what it costs or how it was decided.
+	Detail string `json:"detail"`
+	// N is the number the row is ranked by.
+	N int `json:"n,omitempty"`
+	// Go is a node or module ID the graph tab can navigate to.
+	Go string `json:"go,omitempty"`
+	// Items are the members, for rows that stand for several things.
+	Items []string `json:"items,omitempty"`
 }
 
 // maxNodes caps what is sent.
@@ -266,6 +310,8 @@ func Build(res *scan.Result, includePackages bool) *Payload {
 			p.ModuleEdges = append(p.ModuleEdges, e)
 		}
 	}
+	p.Report = buildReport(res, mm, deadRep, entries, blast, used)
+
 	for _, c := range mm.Cycles {
 		keep := true
 		for _, id := range c {

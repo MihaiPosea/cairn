@@ -132,6 +132,44 @@
   button { cursor:pointer; }
   button:hover { border-color:var(--accent); color:var(--accent); }
 
+  .tabs { margin-left:auto; display:flex; gap:2px; background:var(--surface-2);
+          padding:2px; border-radius:var(--radius-sm); border:1px solid var(--rule); }
+  .tab { font:12px var(--font-sans); padding:4px 13px; border:none; background:none;
+         color:var(--ink-soft); border-radius:5px; letter-spacing:-0.01em; }
+  .tab.on { background:var(--surface); color:var(--ink); font-weight:500;
+            box-shadow:0 1px 2px rgba(28,25,23,.07); }
+  .tab:hover { color:var(--accent); border-color:transparent; }
+
+  #report {
+    display:none; flex:1; overflow-y:auto; background:var(--paper);
+    padding:44px 0 90px;
+  }
+  body.report #report { display:block; }
+  body.report main, body.report #chips, body.report .legend { display:none !important; }
+  .rp { max-width:760px; margin:0 auto; padding:0 28px; }
+  .rp h1 { font:400 42px/1.1 var(--font-serif); letter-spacing:-0.045em;
+           color:var(--ink); margin:0 0 10px; }
+  .rp .lede { font:15.5px/1.6 var(--font-sans); color:var(--ink-2); margin:0 0 34px; }
+  .rp h2 { font:550 13px/1 var(--font-sans); letter-spacing:0.05em; text-transform:uppercase;
+           color:var(--ink-faint); margin:40px 0 4px; padding-top:18px;
+           border-top:1px solid var(--rule); }
+  .rp .sub { font:13px/1.55 var(--font-sans); color:var(--ink-soft); margin:0 0 16px; }
+  .rp .none { font:13px var(--font-mono); color:var(--ink-faint); padding:8px 0; }
+  .f { display:block; width:100%; text-align:left; background:none; border:none;
+       border-bottom:1px solid var(--rule); padding:11px 4px; }
+  .f:hover { background:var(--surface-2); border-color:var(--rule-strong); }
+  .f .ft { font:13px var(--font-mono); color:var(--ink); }
+  .f .fn { float:right; font:12px var(--font-mono); color:var(--ink-faint);
+           font-variant-numeric:tabular-nums; }
+  .f .fd { display:block; font:12.5px/1.5 var(--font-sans); color:var(--ink-soft); margin-top:3px; }
+  .f.crit { border-left:2px solid var(--crit); padding-left:10px; }
+  .f.warn { border-left:2px solid var(--in); padding-left:10px; }
+  .num { display:flex; gap:34px; flex-wrap:wrap; margin:0 0 6px; }
+  .num div { }
+  .num b { display:block; font:400 27px/1.15 var(--font-serif); color:var(--ink);
+           font-variant-numeric:tabular-nums; letter-spacing:-0.03em; }
+  .num span { font:11.5px var(--font-sans); color:var(--ink-faint); }
+
   #chips {
     display:flex; gap:4px; align-items:center; flex-wrap:wrap;
     padding:9px 22px; border-bottom:1px solid var(--rule); background:var(--surface-2);
@@ -215,7 +253,10 @@
   <input id="q" placeholder="filter" autocomplete="off">
   <button id="fit">fit</button>
   <button id="theme" title="light / dark">◐</button>
-  <div class="stats" id="stats"></div>
+  <div class="tabs">
+    <button class="tab on" data-tab="graph">graph</button>
+    <button class="tab" data-tab="report">report</button>
+  </div>
 </header>
 <div id="chips"></div>
 <main>
@@ -228,6 +269,7 @@
   <div class="rail" id="rail-out"></div>
   <aside id="panel"></aside>
 </main>
+<div id="report"><div class="rp" id="rpbody"></div></div>
 <div class="legend">
   <span><i class="sw entry"></i>entry point</span>
   <span><i class="sw"></i>file</span>
@@ -1459,17 +1501,13 @@ async function showSource(path, line) {
 }
 
 // ── boot ────────────────────────────────────────────────────────────────────
-const st = DATA.stats;
-document.getElementById('stats').innerHTML = [
-  ['files', st.files, false], ['imports', st.imports, false],
-  ['unresolved', st.unresolved, st.unresolved > 0],
-  ['cycles', st.cycles, st.cycles > 0],
-  ['unreachable', st.dead, st.dead > 0],
-].map(([k, v, w]) => `<span class="${w ? 'warn' : ''}">${k} <b>${v}</b></span>`).join('');
-
+//
+// The counts that used to sit in the header — cycles, unreachable — moved to
+// the report, where each one can say which and what it costs instead of only
+// how many.
 document.getElementById('hint').textContent = DATA.truncated
   ? `${DATA.truncated} nodes not sent · f fit · c reset`
-  : 'click a folder to open · title bar to close · f fit · c reset';
+  : 'click a folder to go in · breadcrumb to come back · f fit';
 
 // Light by default, matching the site; the choice sticks per browser.
 function setTheme(t) {
@@ -1485,6 +1523,103 @@ document.documentElement.setAttribute('data-theme', theme);
 document.getElementById('theme').onclick = () =>
   setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
 
+// ── report ──────────────────────────────────────────────────────────────────
+//
+// The header used to carry "cycles 5 · unreachable 14". A count is not a
+// finding: it says something is wrong without saying what, where, or whether
+// it matters. Every row here names the thing and what it costs, and clicking
+// one goes and looks at it.
+
+const R = DATA.report || {};
+
+function findingRow(f, cls) {
+  const n = f.n ? `<span class="fn">${f.n}</span>` : '';
+  const go = f.go ? ` data-find="${esc(f.go)}"` : '';
+  return `<button class="f ${cls || ''}"${go}>${n}` +
+         `<span class="ft">${esc(f.title)}</span>` +
+         `<span class="fd">${esc(f.detail)}</span></button>`;
+}
+
+function section(title, sub, list, cls, empty) {
+  let h = `<h2>${esc(title)}</h2>`;
+  if (sub) h += `<p class="sub">${esc(sub)}</p>`;
+  if (!list || !list.length) return h + `<p class="none">${esc(empty)}</p>`;
+  return h + list.map(f => findingRow(f, cls)).join('');
+}
+
+function renderReport() {
+  const st = DATA.stats || {};
+  const mods = (DATA.modules || []).length;
+  const body = document.getElementById('rpbody');
+
+  const entryList = (R.entries || []).slice(0, 10)
+    .map(e => `<button class="f" data-find="file:${esc(e.file)}">` +
+              `<span class="ft">${esc(e.file)}</span>` +
+              `<span class="fd">${esc(e.reason)}</span></button>`).join('');
+
+  body.innerHTML =
+    `<h1>${esc(repoName())}</h1>` +
+    `<p class="lede">${st.files} files, ${st.imports} imports, in ${mods} ` +
+    `${mods === 1 ? 'part' : 'parts'}. Everything below was read out of the code itself — ` +
+    `nothing here was configured.</p>` +
+
+    `<div class="num">` +
+      `<div><b>${st.files}</b><span>files</span></div>` +
+      `<div><b>${st.imports}</b><span>imports</span></div>` +
+      `<div><b>${mods}</b><span>modules</span></div>` +
+      `<div><b>${st.unresolved}</b><span>unresolved</span></div>` +
+      `<div><b>${(R.entries || []).length}</b><span>entry points</span></div>` +
+    `</div>` +
+
+    section('Import loops',
+      'A loop between two files is often deliberate. A loop between two modules means the ' +
+      'boundary between them is not real.',
+      R.cycles, 'crit', 'None. Every import points one way.') +
+
+    section('Reaching past the front door',
+      'A module that publishes an entry point is saying come in this way. These imports go ' +
+      'around it, so they break when that module is reorganised.',
+      R.boundary, 'warn', 'None. Every cross-module import goes through a declared entry point.') +
+
+    section('Nothing reaches these',
+      R.entryBail
+        ? 'Not analysed: ' + R.entryBail
+        : 'Unreachable from any entry point. Dynamic imports are invisible to this, so check ' +
+          'before deleting anything.',
+      R.unreachable, '', R.entryBail ? '' : 'Nothing. Every file is reachable.') +
+
+    section('Where a change is felt furthest',
+      'Ranked by how many files sit downstream. Entry points are left out — a large reach ' +
+      'there is the shape of a program, not a finding about it.',
+      R.heavy, '', 'Nothing depends on anything else here.') +
+
+    section('Could not be resolved',
+      'Grouped by cause. Almost none of these are mistakes: test fixtures asserting that an ' +
+      'import fails, scaffolding templates, generated trees that are not present.',
+      R.unresolvedBy, '', 'Every import resolved to a file, a package or a builtin.') +
+
+    `<h2>Entry points</h2>` +
+    `<p class="sub">Where the outside world comes in, and how each was recognised. ` +
+    `Everything unreachable from one of these is reported above.</p>` +
+    (entryList || `<p class="none">None found.</p>`);
+
+  for (const b of body.querySelectorAll('[data-find]')) {
+    b.onclick = () => { showTab('graph'); navigateTo(b.getAttribute('data-find')); };
+  }
+}
+
+function showTab(which) {
+  document.body.classList.toggle('report', which === 'report');
+  for (const t of document.querySelectorAll('.tab')) {
+    t.classList.toggle('on', t.getAttribute('data-tab') === which);
+  }
+  if (which === 'graph') { resize(); draw(); }
+}
+
+for (const t of document.querySelectorAll('.tab')) {
+  t.onclick = () => showTab(t.getAttribute('data-tab'));
+}
+
 readColors();
 addEventListener('resize', resize);
 
@@ -1492,6 +1627,7 @@ relayout();
 resize();
 fit(false);
 renderPanel(null);
+renderReport();
 </script>
 </body>
 </html>
