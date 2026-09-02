@@ -71,7 +71,7 @@
   #stage.drag { cursor:grabbing; }
   #c { display:block; position:absolute; inset:0; }
   #mini {
-    position:absolute; right:16px; bottom:16px; width:198px; height:124px;
+    position:absolute; right:16px; bottom:16px; width:250px; height:158px;
     border:1px solid var(--rule); background:var(--surface); cursor:pointer;
     border-radius:var(--radius-sm); box-shadow:0 1px 3px rgba(28,25,23,.06);
   }
@@ -145,7 +145,7 @@
     padding:44px 0 90px;
   }
   body.report #report { display:block; }
-  body.map .rail, body.map #chips { display:none !important; }
+  body.map #chips, body.map #mini, body.map #minilabel { display:none !important; }
   body.report main, body.report #chips, body.report .legend { display:none !important; }
   .rp { max-width:760px; margin:0 auto; padding:0 28px; }
   .rp h1 { font:400 42px/1.1 var(--font-serif); letter-spacing:-0.045em;
@@ -220,6 +220,8 @@
   .chip:hover { border-color:var(--accent); color:var(--accent); }
   .chip.alt { border-style:dashed; }
 
+  #minilabel { position:absolute; right:18px; bottom:180px; font:10px var(--font-sans);
+               letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-faint); }
   .legend { display:flex; gap:16px; padding:9px 22px; border-top:1px solid var(--rule);
             background:var(--surface); font:11.5px var(--font-sans);
             color:var(--ink-faint); flex-shrink:0; align-items:center; }
@@ -260,20 +262,18 @@
   <button id="fit">fit</button>
   <button id="theme" title="light / dark">◐</button>
   <div class="tabs">
-    <button class="tab on" data-tab="graph">graph</button>
-    <button class="tab" data-tab="map">whole repo</button>
-    <button class="tab" data-tab="report">report</button>
+    <button class="tab on" data-tab="graph" title="Walk the repo one level at a time">explore</button>
+    <button class="tab" data-tab="map" title="Every file at once, coloured by module">whole repo</button>
+    <button class="tab" data-tab="report" title="Cycles, dead code, blast radius">findings</button>
   </div>
 </header>
 <div id="chips"></div>
 <main>
-  <div class="rail" id="rail-in"></div>
-  <div id="stage"><canvas id="c"></canvas><canvas id="mini"></canvas>
+  <div id="stage"><canvas id="c"></canvas><canvas id="mini"></canvas><span id="minilabel">you are here</span>
     <div id="code"><header><button class="chip" id="codeclose">✕ close</button>
       <span class="path" id="codepath"></span></header>
       <div class="body" id="codebody"></div></div>
   </div>
-  <div class="rail" id="rail-out"></div>
   <aside id="panel"></aside>
 </main>
 <div id="report"><div class="rp" id="rpbody"></div></div>
@@ -754,7 +754,6 @@ function relayout() {
            cross, audit, wt, rails: buildRails(cross) };
 
   renderCrumbs();
-  renderRails();
 }
 
 // Rails collect everything that crosses the boundary, so a connection leaving
@@ -813,6 +812,12 @@ function resize() {
 // programmatic move is eased so the eye can follow it.
 let anim = null;
 function moveTo(nx, ny, ns, ms = 320) {
+  // Animations run on requestAnimationFrame, which a browser stops calling in
+  // a tab that is not visible. The zoom between levels sets the camera to its
+  // starting point first, so a throttled tab would be left parked there — the
+  // view stuck mid-transition at a scale nobody asked for, until it happened
+  // to be focused again. If there will be no frames, go straight there.
+  if (document.hidden) { tx = nx; ty = ny; s = ns; anim = null; draw(); return; }
   const from = { tx, ty, s }, to = { tx: nx, ty: ny, s: ns };
   const t0 = performance.now();
   anim = () => {
@@ -1225,12 +1230,100 @@ function layoutText(x) {
   x.text = lo >= dir.length ? '' : '…' + dir.slice(lo);
 }
 
+// "You are here": the repository as areas, sized by how many files each part
+// holds, with the part you are standing in lit up.
+//
+// The first attempt drew the whole-repo layout shrunk down, which at this size
+// is a row of vertical bars — a picture of the *layout*, not of the
+// repository, and unreadable. Area is the thing that survives being made
+// small: it says how big each part is and where it sits, at a glance.
+function squarify(items, x, y, w, h) {
+  const out = [];
+  let i = 0;
+  while (i < items.length && w > 0.5 && h > 0.5) {
+    const horiz = w >= h, side = horiz ? h : w;
+    const total = items.slice(i).reduce((a, b) => a + b.n, 0) || 1;
+    const row = []; let sum = 0, best = Infinity;
+    for (let j = i; j < items.length; j++) {
+      const s2 = sum + items[j].n;
+      const len = (s2 / total) * (horiz ? w : h);
+      let worst = 0;
+      for (const it of row.concat(items[j])) {
+        const t = (it.n / s2) * side;
+        worst = Math.max(worst, t > 0 && len > 0 ? Math.max(len / t, t / len) : Infinity);
+      }
+      if (worst > best && row.length) break;
+      row.push(items[j]); sum = s2; best = worst;
+    }
+    const len = (sum / total) * (horiz ? w : h);
+    let off = 0;
+    for (const it of row) {
+      const t = (it.n / sum) * side;
+      out.push(horiz ? { id: it.id, x, y: y + off, w: len, h: t }
+                     : { id: it.id, x: x + off, y, w: t, h: len });
+      off += t;
+    }
+    if (horiz) { x += len; w -= len; } else { y += len; h -= len; }
+    i += row.length;
+  }
+  return out;
+}
+
+function drawAtlas() {
+  const w = mini.width / dpr, h = mini.height / dpr;
+  mctx.save();
+  mctx.scale(dpr, dpr);
+  mctx.fillStyle = C.surface;
+  mctx.fillRect(0, 0, w, h);
+
+  // Which modules the level on screen belongs to, and how much of each.
+  const inScope = new Map();
+  let shown = 0;
+  for (const n of files) {
+    const c = childOf(n.id);
+    if (c && view.index.has(c)) { const m = moduleIdOf(n.id); inScope.set(m, (inScope.get(m) || 0) + 1); shown++; }
+  }
+
+  const mods = (DATA.modules || []).filter(m => m.files > 0)
+    .map(m => ({ id: m.id, n: m.files, name: m.name }));
+  if (!mods.length) { mctx.restore(); return; }
+
+  const pad = 7, capH = 15;
+  const cells = squarify(mods, pad, pad, w - pad * 2, h - pad * 2 - capH);
+  const byId = new Map(mods.map(m => [m.id, m]));
+
+  mctx.font = '9.5px "Geist", ui-sans-serif, sans-serif';
+  mctx.textBaseline = 'top';
+  for (const c of cells) {
+    const here = inScope.has(c.id);
+    mctx.fillStyle = here ? C.accentSoft : C.surface2;
+    mctx.fillRect(c.x, c.y, c.w - 1, c.h - 1);
+    mctx.strokeStyle = here ? C.accent : C.rule;
+    mctx.lineWidth = here ? 1.5 : 1;
+    mctx.strokeRect(c.x + 0.5, c.y + 0.5, c.w - 2, c.h - 2);
+    if (c.w > 40 && c.h > 13) {
+      mctx.fillStyle = here ? C.accent : C.inkFaint;
+      const label = (byId.get(c.id) || {}).name || '';
+      mctx.save();
+      mctx.beginPath(); mctx.rect(c.x + 3, c.y + 2, c.w - 7, c.h - 4); mctx.clip();
+      mctx.fillText(label, c.x + 4, c.y + 3);
+      mctx.restore();
+    }
+  }
+
+  mctx.textBaseline = 'alphabetic';
+  mctx.font = '10px "Geist Mono", ui-monospace, monospace';
+  mctx.fillStyle = C.inkSoft;
+  mctx.fillText((focusPath() || repoName() + '/') + '  ' + shown + ' of ' + files.length,
+                pad, h - 4);
+  mctx.restore();
+}
+
 function drawMini() {
-  // Scoping means the graph usually fits, and a minimap of something already
-  // fully visible is 198x124 pixels of stage spent saying nothing.
-  const off = view.width * s > VW + 4 || view.height * s > VH + 4;
-  mini.style.display = off ? 'block' : 'none';
-  if (!off) return;
+  if (whole) { mini.style.display = 'none'; return; }
+  mini.style.display = 'block';
+  drawAtlas();
+  return;
   const w = mini.width / dpr, h = mini.height / dpr;
   mctx.save();
   mctx.scale(dpr, dpr);
@@ -1377,7 +1470,6 @@ function select(id, frame = false) {
   if (!id) { upSet = downSet = null; }
   renderPanel(id ? view.index.get(id) : null);
   if (id && frame) frameSelection(id);
-  renderRails();
   draw();
 }
 
@@ -1438,13 +1530,42 @@ function bytes(b) {
 // ── navigation ──────────────────────────────────────────────────────────────
 
 function navigate(segs, keepSelection) {
+  const from = focus.slice();
+  const goingIn = segs.length > from.length;
+
+  // Where the thing being entered sits on screen right now, measured before
+  // the old layout is thrown away. Without it the two levels simply cut, and
+  // a cut between two pictures of boxes gives the reader nothing to hold: no
+  // sense of having gone anywhere, only of the screen changing.
+  let rect = null;
+  if (goingIn) {
+    const b = view.index.get('g:' + segs.join('/'));
+    if (b) rect = { x: b.x * s + tx, y: b.y * s + ty, w: b.bw * s, h: b.bh * s };
+  }
+
   focus = segs.slice();
   // A selection from the previous scope leaves hotSet full of ids that have no
   // box here, and drawBoxes dims everything not in hotSet — the entire new
   // scope would render at alpha 0.12.
   if (!keepSelection) { selected = null; hotSet = null; upSet = downSet = null; renderPanel(null); }
   relayout();
-  fit(true);
+
+  const [ftx, fty, fs] = fitParams();
+  const W = Math.max(view.width, 1), H = Math.max(view.height, 1);
+  if (goingIn && rect) {
+    // Start with the new level drawn inside the box that was clicked, then
+    // grow it out: the box opens into its contents.
+    const k = Math.max(rect.w / W, 0.02);
+    tx = rect.x; ty = rect.y + (rect.h - H * k) / 2; s = k;
+    moveTo(ftx, fty, fs, 420);
+  } else if (!goingIn && from.length) {
+    const b = view.index.get('g:' + from.join('/'));
+    if (b) {
+      const k = Math.max(VW / Math.max(b.bw, 1), 0.02);
+      tx = -b.x * k; ty = VH / 2 - (b.y + b.bh / 2) * k; s = k;
+      moveTo(ftx, fty, fs, 420);
+    } else fit(true);
+  } else fit(true);
 }
 
 function descend(box) {
@@ -1607,11 +1728,7 @@ function renderFolder(panel, x) {
     (x.synthetic ? '' : `<button class="chip" id="openg">go inside →</button>`) +
     list('depends on', f.out, 'out') +
     list('depended on by', f.inc, 'in') +
-    (f.heavy.length
-      ? `<h3>heaviest files here</h3><ul>` +
-        f.heavy.map(k => `<li data-go="${esc(k.id)}">${esc(k.base)}` +
-                         `<span class="d"> ${k.blast}</span></li>`).join('') + `</ul>`
-      : '');
+    '';
 
   const go = document.getElementById('openg');
   if (go) go.onclick = () => descend(x);
