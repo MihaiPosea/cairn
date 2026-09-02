@@ -1,0 +1,62 @@
+# cairn
+
+**See what your software actually depends on.**
+
+Point it at a repo it has never seen. No config, no migration, nothing to adopt.
+
+Your `package.json` says 13 dependencies. Your `node_modules` has 312 packages and 394 MB in it.
+cairn shows you the path between those two numbers — and which of your own files is responsible.
+
+```
+cairn scan .                 build the graph, summarise it
+cairn blast lib/utils.ts     what breaks if you change this file
+cairn dead                   files nothing reaches from an entry point
+cairn why left-pad           the path that dragged this package in
+cairn cycles                 import cycles, as readable chains
+cairn cost framer-motion     packages and bytes this one import pulls in
+```
+
+## Why it exists
+
+Every tool in this space does one half. `madge` and `dependency-cruiser` map the files you wrote.
+`depcheck` and `knip` look at packages and dead code. Nothing joins the two, so nobody can answer the
+question that actually matters: *this one import, in this one component, costs how much?*
+
+It's also a learning project — written to understand how dependency resolution, incremental
+indexing, and graph analysis really work. That part is not a disclaimer; it's the point.
+
+## Honesty
+
+Every scan prints an **unresolved rate**: the share of import specifiers cairn could not resolve to a
+file, a package, or a builtin. Resolution in JavaScript is genuinely hard — `exports` maps, path
+aliases, conditional entry points, four competing lockfile formats — and any tool claiming perfection
+is hiding its misses. cairn reports its own.
+
+Correctness is measured, not asserted: the graph is diffed against the real bundler's module graph,
+and the precision and recall numbers are published.
+
+**This is not a supported product.** Issues may go unanswered.
+
+## Status
+
+- [x] M0 — graph core: nodes, edges, traversal
+- [ ] M1 — parse TS/JS, resolve relative imports
+- [ ] M2 — real resolution: tsconfig paths, exports maps, node_modules, workspaces
+- [ ] M3 — package graph from lockfiles (npm · pnpm · yarn · bun) and node_modules
+- [ ] M4 — the join, and the five answers
+- [ ] M5 — incremental index (re-scan only what changed)
+- [ ] M6 — differential correctness harness vs. the real bundler
+- [ ] M7 — web UI
+
+## Scope
+
+JavaScript and TypeScript, done properly, before anything else. Python and Go arrive later as
+additional resolvers behind the same interface. A tool that is right about one ecosystem beats one
+that is vaguely right about five.
+
+## Develop
+
+```
+go test ./...
+go run ./cmd/cairn scan ~/personal-website
+```
