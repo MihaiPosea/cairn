@@ -1,105 +1,165 @@
 # cairn
 
-**See what your software actually depends on.**
+**See what your software actually depends on — and give an agent a way to find it.**
 
-Abstraction has always been how software gets built. AI writing your code is the newest layer of it —
-and the thing underneath hasn't gone anywhere. Something still has to be true about how your files
-connect, whoever or whatever wrote them.
+Abstraction has always been how software gets built. AI writing your code is the newest layer of
+it, and the thing underneath hasn't gone anywhere. Something still has to be true about how your
+files connect, whoever or whatever wrote them.
 
-cairn shows you that layer. Point it at a repo it has never seen. No config, no migration, nothing to
-adopt.
+cairn works that layer out from the code itself. Point it at a repo it has never seen. No config,
+nothing to adopt.
 
 ```
-cairn scan .                 build the graph, summarise it
-cairn blast lib/utils.ts     what breaks if you change this file
-cairn dead                   files nothing reaches from an entry point
-cairn why left-pad           the path that dragged this package in
-cairn cycles                 import cycles, as readable chains
-cairn cost framer-motion     packages and bytes this one import pulls in
-cairn affected --base main   what needs re-running after your changes
-cairn verify                 check the graph against TypeScript's own resolver
-cairn serve                  open the graph in a browser
-cairn export graph.html      one file you can send anyone, no server needed
+cairn grep <pattern> --from <file>   search, ordered by what is connected to that file
+cairn scope <file>                   the only files a search must cover — pipe it into grep
+cairn context <file>                 what to read before changing this file
+cairn drift --base main              what a change did to the architecture
+
+cairn scan .                         build the graph, summarise it
+cairn blast lib/utils.ts             what breaks if you change this file
+cairn dead                           files nothing reaches from an entry point
+cairn why left-pad                   the path that dragged this package in
+cairn cycles                         import cycles, as readable chains
+cairn cost framer-motion             packages and bytes this one import pulls in
+cairn affected --base main           what needs re-running after your changes
+cairn verify                         check the graph against TypeScript's own resolver
+cairn serve                          open the graph in a browser
+cairn export graph.html              one file you can send anyone, no server needed
 ```
 
 Every command takes `--json`.
 
-## It opens on something you can read
+---
 
-Point it at a repository and the first thing you see is the handful of parts it is made of —
-between four and fourteen boxes on every project measured, laid out in numbered columns so the
-first column is what nothing imports and the last is what imports nothing. Click a box to go
-inside it; the breadcrumb brings you back.
+## The search half
 
-Only the level you are looking at is drawn. Everything crossing its boundary is collected into
-rails at the edges rather than drawn as lines across the picture, so the view has a ceiling no
-matter how large the repository is. Where a level is genuinely dense, cairn says how many
-connections are there instead of drawing all of them, and clicking a file draws its own.
+Every tool in the grep family has spent thirty years getting faster at one question: which files
+contain these bytes. None of them can *order* the answer, because the file system does not know
+which files matter — so hits come back in path order, an order chosen by whoever named the
+directories.
 
-The second tab is the report: import loops, imports reaching past a module's entry point into
-its internals, files nothing reaches, and where a change is felt furthest — each one named,
-with what it costs, and a click away from the thing itself.
+That is fine for a person, who reads three results and stops. It is the central problem for an
+agent, which cannot tell hit 3 from hit 180 without opening both, so it opens twenty and guesses.
 
-## Why it exists
+Four files. `round` appears in three of them:
 
-Every tool in this space does one half. `madge` and `dependency-cruiser` map the files you wrote.
-`depcheck` and `knip` look at packages and dead code. Nothing joins the two, so nobody can answer the
-question that actually matters: *this one import, in this one component, costs how much?*
+```
+src/math.ts         export function round(...)          the real one
+src/cart.ts         import { round } from "./math"      uses the real one
+billing/legacy.ts   function round(x) { return x|0 }    a different round entirely
+```
 
-Your `package.json` declares 13 dependencies. Your lockfile names 109. Your `node_modules` holds 51
-of them and weighs 394 MB. cairn shows the path between those numbers, and which of your own files is
-responsible for it.
+`billing/legacy.ts` has its own private `round` and no relationship to the others. grep shows all
+five matching lines and cannot tell you which is which.
 
-## It has been checked on 54 real repositories
+```
+$ cairn grep round --from src/math.ts
 
-Not fixtures — actual open-source projects, cloned fresh and scanned with one frozen binary:
+src/math.ts:1  the file itself
+    export function round(n: number) { return Math.round(n); }
+src/cart.ts:1  1 hop up — breaks if you change it
+    import { round } from "./math";
 
-| | |
+— not connected to src/math.ts —
+
+billing/legacy.ts:2
+    function round(x: number) { return x | 0; }
+```
+
+The ordering comes from resolving `"./math"` to an actual file — which needs the extension ladder,
+`index` files, tsconfig `paths`, workspace links, `exports` maps — and then counting hops through
+the resulting graph. Files that import the anchor rank above files the anchor imports, because a
+file that breaks when you change something is more urgent than one you merely use. Every ranked
+hit carries the import chain that justifies its position, so the order can be checked rather than
+trusted.
+
+**Neither half works alone.** The graph has no idea what any file means. grep has no idea which
+file the import on line three refers to.
+
+### Measured on 34 repositories
+
+React, Angular, Vue, Svelte, Solid, Preact, Vite, Rollup, Astro, Nuxt, React Router, TanStack
+(query/table/router), MUI, Chakra, Radix, Mantine, Redux, Zustand, Jotai, MobX, Express, Fastify,
+NestJS, tRPC, Hono, Zod, date-fns, Vitest, Prettier, Excalidraw, tldraw, Lexical — cloned fresh,
+searched with identifiers taken from the files themselves. 111,463 files, 301,749 imports, ~1,700
+searches, no failures.
+
+| | median |
 |---|---|
-| repositories | **54 scanned, 0 failures** |
-| files | 175,152 |
-| imports | 556,388 |
-| unresolved | 0.55% |
-| **unexplained** | **0.033%** |
-| repositories with zero unexplained | **29 of 54** |
-| parse failures | **0** |
+| hits a plain grep returns | 63 lines |
+| of those, within one hop | **4 lines** |
+| **ranked below the fold** | **91%** |
+| share of the repo a search must cover | **6.0%** |
+| read-set from `cairn context` | 3 files, ~1,700 tokens |
 
-React, Angular, Vue, Svelte, Solid, Qwik, Preact, Lit, Next, Nuxt, SvelteKit, Vite, Webpack, Rollup,
-Parcel, MUI, Chakra, Radix, Ant Design, Mantine, Headless UI, React Spectrum, Redux, Zustand, Jotai,
-MobX, TanStack, Express, Fastify, NestJS, Prisma, tRPC, Hono, Drizzle, Elysia, Vitest, Playwright,
-Jest, Cypress, Testing Library, Zod, Axios, Immer, date-fns, Lodash, tldraw, Lexical, n8n, cal.com,
-ESLint, Prettier, Storybook, Turborepo, Nx.
+The extremes matter more than the median:
 
-"Unresolved" counts every specifier cairn could not point at a file. Almost none are mistakes: they
-are test fixtures asserting that an import *fails*, scaffolding templates, codegen output, and
-binaries for other platforms. cairn names each cause. What is left — **186 imports out of 556,388** —
-was checked by hand and is genuinely absent from those repositories.
+| repo | grep returns | actually connected | search scope |
+|---|---|---|---|
+| react | 1,188 lines | **2** | 0.1% |
+| fastify | 1,400 lines | 12 | 0.7% |
+| rollup | 177 lines | 2 | 0.0% |
+| vue | 47 lines | 12 | 24% |
+| **excalidraw** | 28 lines | 13 | **90%** |
 
-A smaller reference set, with the same measurement:
+Excalidraw is the honest result. Its files really can reach almost all of each other, so there is
+nothing for the graph to rank away — and it scored worst on both measures independently. **This
+works in proportion to how modular the code already is**, and the number it reports when it does
+not help is itself the most useful thing it can tell you.
 
-| repo | files | imports | unresolved | unexplained |
-|---|---|---|---|---|
-| excalidraw | 668 | 4,692 | 0.00% | **0** |
-| vue-core | 538 | 2,153 | 0.05% | **0** |
-| tanstack-query | 1,230 | 4,458 | 0.09% | **0** |
-| astro | 4,615 | 11,614 | 0.10% | **0** |
-| create-t3-app | 240 | 768 | 2.60% | **0** |
-| shadcn/ui | 3,947 | 19,895 | 23.24% | **0** |
-| nx | 5,440 | 21,120 | 0.14% | 2 |
-| svelte | 8,060 | 7,725 | 0.94% | 1 |
-| turborepo | 1,284 | 3,255 | 0.86% | 1 |
-| **total** | **26,022** | **75,680** | **6.3%** | **4  (0.005%)** |
+---
 
-The second column is the one that matters. "Unresolved" counts every specifier cairn could not
-point at a file — but in a healthy repository almost none of those are mistakes. They are test
-fixtures asserting that an import *fails*, scaffolding templates whose files appear later, codegen
-output, and binaries for other platforms. cairn names each cause, and what is left over —
-**four imports out of 75,680** — was checked by hand and is genuinely absent from those repos.
+## The change half
 
-That is the floor. Driving it to zero would mean inventing resolutions for files that do not exist,
-which is the one thing a tool like this must never do.
+`git diff` answers "what text changed". Nothing answers "what did that do to the shape of the
+program" — and that is where the damage happens. A change that adds a cycle, couples two parts
+that were independent, or strands a file nothing reaches, does not look like anything in a line
+diff. Every individual line is reasonable.
 
-## And on every project shape
+The failure mode is old. Generated code makes it constant, because something writing plausible
+code very fast, with no memory of why a boundary was there, will cross it whenever crossing is the
+shortest path.
+
+Appending one import to Vue's `reactivity/src/index.ts` — a two-line diff:
+
+```
+$ cairn drift --base main
+
+  ✗ new import cycle: compiler-core/ast.ts → codegen.ts → … (104 files)
+     104 files now import each other in a loop. It swallowed 3 smaller cycles
+     covering 89 files, which were separate before — so this is one loop where
+     there were 3
+  ✗ a change now reaches 32% of the repository, up from 30%
+```
+
+Exits non-zero on regressions only, so it works as a CI gate without failing a build when things
+improve. A cycle that disappeared because a bigger one swallowed it is not reported as an
+improvement — that would turn a clear regression into a wash.
+
+---
+
+## Correctness
+
+**Every scan prints an unresolved rate** — the share of specifiers cairn could not resolve.
+Resolution in JavaScript is genuinely hard, and any tool claiming perfection is hiding its misses.
+
+**`cairn verify` diffs the graph against TypeScript's own resolver**, specifier by specifier: 100%
+precision and recall across 10,442 imports. The harness was tested by sabotage, because a verifier
+that cannot fail proves nothing — corrupting alias substitution dropped precision to 2.83%.
+
+**Advice is labelled by confidence.** `cairn dead` refuses to answer when a repo has no entry
+points, rather than declaring every file dead. `cairn affected` refuses when the graph is
+incomplete. Computed `import()` calls are recorded and reported, never inferred.
+
+Across 54 repositories: 175,152 files, 556,388 imports, 0.55% unresolved, **0.033% unexplained**,
+29 of 54 at zero, 0 scan failures, 0 parse failures. Almost every unresolved specifier is a test
+fixture asserting that an import *fails*, a scaffolding template, or a binary for another
+platform. cairn names each cause.
+
+Driving that to zero would mean inventing resolutions for files that do not exist, which is the
+one thing a tool like this must never do.
+
+## Project shapes it handles
 
 | | |
 |---|---|
@@ -115,22 +175,17 @@ which is the one thing a tool like this must never do.
 | Node subpath imports (`#internal/*`) | ✅ |
 | Framework virtual modules (`astro:` `virtual:` `$app/`) | ✅ |
 
-## Honesty
+## The viewer
 
-**Every scan prints an unresolved rate** — the share of specifiers cairn could not resolve. Resolution
-in JavaScript is genuinely hard, and any tool claiming perfection is hiding its misses.
+`cairn serve` opens the graph in a browser; `cairn export graph.html` writes the same thing as one
+file that reaches out to nothing at all.
 
-**Correctness is measured, not asserted.** `cairn verify` diffs the graph against **TypeScript's own
-resolver**, specifier by specifier — 100% precision and recall across 10,442 imports. The harness was
-tested by sabotage, because a verifier that cannot fail proves nothing: corrupting alias substitution
-dropped precision to 2.83%.
-
-**`verify` reports which rules the repo exercised.** A perfect score on a repo whose imports are all
-relative says nothing about path aliases.
-
-**Advice is labelled by confidence.** "Declared but never imported" is a hint, not a finding.
-`cairn dead` refuses to answer when a repo has no entry points, rather than declaring every file
-dead. `cairn affected` refuses when the graph is incomplete.
+It opens where the architecture is rather than at the filesystem root — for a monorepo that is
+usually one level in — and shows one level at a time in numbered dependency columns, so the first
+column is what nothing imports and the last is the foundation. Click a box for what it is and what
+depends on it, double-click to go inside. A **whole repo** tab draws every file at once, coloured
+by module. A **findings** tab lists cycles, unreachable files and blast radius as named findings
+rather than counts.
 
 ## Performance
 
@@ -138,7 +193,6 @@ dead. `cairn affected` refuses when the graph is incomplete.
 |---|---|---|
 | cold scan | 1.2 s | 7.4 s (264 MB) |
 | rescan, unchanged | 0.08 s | 1.1 s (122 MB) |
-| rescan after one edit | 0.08 s | 1.1 s |
 
 Parse results are cached by content hash — never mtime, which changes on a fresh checkout and does
 not change when a file is restored from backup.
@@ -149,9 +203,9 @@ not change when a file is restored from backup.
 go install github.com/MihaiPosea/cairn/cmd/cairn@latest
 ```
 
-One static binary. No C toolchain, no npm, cross-compiles anywhere Go does — the tree-sitter runtime
-is pure Go. (`cairn verify` is the exception: it runs the real TypeScript compiler as its oracle, so
-it needs `node` and a `typescript` install in the repo being checked.)
+One static binary. Two dependencies. No C toolchain, no npm, cross-compiles anywhere Go does — the
+tree-sitter runtime is pure Go. (`cairn verify` is the exception: it runs the real TypeScript
+compiler as its oracle.)
 
 ## Scope
 
@@ -159,19 +213,18 @@ JavaScript and TypeScript, done properly, before anything else. Python and Go ar
 additional resolvers behind the same interface. A tool that is right about one ecosystem beats one
 that is vaguely right about five.
 
-Deliberately out of scope: resolving *into* package internals — packages are single nodes, which is
-why `exports` maps never needed implementing — and guessing at dynamic dependencies. Computed
-`import()` calls are recorded and reported, never inferred.
+Deliberately out of scope: resolving *into* package internals, and guessing at dynamic
+dependencies.
 
 **This is a learning project, not a supported product.** `DESIGN.md` records every decision, the
-alternatives rejected, and all sixteen bugs found along the way — including the ones the tests caught
-and the ones only real repositories did. Issues may go unanswered.
+alternatives rejected, and the bugs found along the way — including the ones only real
+repositories found, such as `build/` being skipped everywhere until a 34-repo sweep showed 95
+files of hand-written source silently missing.
 
 ## Develop
 
 ```
 go test ./...
 go test -race ./...
-go test -fuzz FuzzParse ./internal/lang/jsts/
 go run ./cmd/cairn scan ~/some-repo
 ```
