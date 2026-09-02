@@ -1176,13 +1176,27 @@ function boxAt(wx, wy) {
   return best ? { box: best, header: false } : null;
 }
 
-let dragging = false, moved = false, lx = 0, ly = 0;
-stage.addEventListener('mousedown', e => { dragging = true; moved = false; lx = e.clientX; ly = e.clientY; stage.classList.add('drag'); });
+// How far the pointer may travel and still count as a click.
+//
+// This was two pixels, measured between consecutive mousemove events rather
+// than from where the button went down. A hand on a trackpad drifts three or
+// four pixels during an ordinary click, so the press was read as a pan and
+// swallowed: clicking a box did nothing, and did nothing in a way no test
+// caught, because synthetic events are pixel-perfect and real ones never are.
+const DRAG_SLOP = 6;
+let dragging = false, moved = false, lx = 0, ly = 0, downX = 0, downY = 0;
+stage.addEventListener('mousedown', e => {
+  dragging = true; moved = false;
+  lx = downX = e.clientX; ly = downY = e.clientY;
+  stage.classList.add('drag');
+});
 addEventListener('mouseup', () => { dragging = false; stage.classList.remove('drag'); });
 addEventListener('mousemove', e => {
   if (dragging) {
     const dx = e.clientX - lx, dy = e.clientY - ly;
-    if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+    // From the press, not from the last event: a slow drag never trips a
+    // per-event threshold, and a quick click always does.
+    if (Math.abs(e.clientX - downX) + Math.abs(e.clientY - downY) > DRAG_SLOP) moved = true;
     anim = null; tx += dx; ty += dy; lx = e.clientX; ly = e.clientY; draw();
     return;
   }
@@ -1431,10 +1445,10 @@ function goTo(id) {
 // outside this folder it depends on, which depend on it, and which files
 // inside carry the weight.
 function folderFacts(x) {
-  const inside = id => {
-    const n = item(id);
-    return n && n.label && x.label && n.label.startsWith(x.label);
-  };
+  // Membership by the same rule the layout uses, not by path prefix. A
+  // synthetic module has no path to prefix-match against, so the prefix
+  // version quietly reported that nothing was inside it.
+  const inside = id => childOf(id) === x.id;
   const out = new Map(), inc = new Map();
   let internal = 0;
   const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
@@ -1459,7 +1473,7 @@ function folderFacts(x) {
   // files are almost always a level or two down in src/, so the direct-leaf
   // version of this listed whatever stray .d.ts sat at the top and called it
   // the heaviest thing in there.
-  const kids = files.filter(n => n.label.startsWith(x.label))
+  const kids = files.filter(n => inside(n.id))
     .sort((a, b) => b.blast - a.blast).slice(0, 6);
   return { out: shape(out), inc: shape(inc), internal, heavy: kids };
 }
@@ -1488,7 +1502,7 @@ function renderFolder(panel, x) {
     `<div class="row"><span>imports between them</span><span>${f.internal}</span></div>` +
     (mod && mod.entry ? `<div class="row"><span>entered through</span><span>${esc(mod.entry.split('/').pop())}</span></div>` : '') +
     (dead ? `<div class="row"><span>nothing reaches</span><span>${dead}</span></div>` : '') +
-    `<button class="chip" id="openg">go inside →</button>` +
+    (x.synthetic ? '' : `<button class="chip" id="openg">go inside →</button>`) +
     list('depends on', f.out, 'out') +
     list('depended on by', f.inc, 'in') +
     (f.heavy.length
@@ -1497,7 +1511,8 @@ function renderFolder(panel, x) {
                          `<span class="d"> ${k.blast}</span></li>`).join('') + `</ul>`
       : '');
 
-  document.getElementById('openg').onclick = () => descend(x);
+  const go = document.getElementById('openg');
+  if (go) go.onclick = () => descend(x);
   wire(panel);
 }
 
@@ -1515,7 +1530,11 @@ function renderPanel(x) {
     wire(panel); return;
   }
 
-  if (x.group) { renderFolder(panel, x); return; }
+  // Synthetic boxes — the repository-root files, the merged tail, external
+  // packages — are containers too. Falling through to the file branch gave
+  // them a panel with a kind of "group" and no facts at all, which is what
+  // clicking one looked like: nothing.
+  if (x.group || x.synthetic) { renderFolder(panel, x); return; }
 
   // Aggregated edges lose the line they came from, so the raw edges are used
   // here: this panel is about specific statements, not bundles.
