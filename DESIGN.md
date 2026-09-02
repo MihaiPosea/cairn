@@ -817,3 +817,77 @@ The 186 are 165 relative paths with no matching file, spread across 25 repositor
 per repository, in half a million imports. Spot-checked by hand: Solid imports `./jsx.js` from nine
 files and no such file exists anywhere in the package. They are broken imports in those repositories,
 which is the floor a tool that refuses to invent resolutions can reach.
+
+---
+
+## M9 — the scoped navigator
+
+**The view had no ceiling, and that was the whole problem.**
+M7 chose containers over a breadcrumb so you could see where you were without reading one.
+That was right about orientation and wrong about everything else: folders could be opened
+anywhere, the whole repository stayed laid out around whatever was open, and drilling in *added*
+detail without ever removing any. Measured on excalidraw — default 66 boxes and 301 edges;
+after opening five nested folders, **268 boxes and 1,159 edges across a canvas 15,084 pixels
+wide**. Someone who opened a folder to read four files got 1,159 lines across the screen.
+
+The reader is now always inside exactly one container and only its immediate children are
+drawn. Containers are gone, so a breadcrumb does the orientation job after all. Worst case
+across nine repositories is now 253 boxes and **no** background lines; the typical level is
+under 40.
+
+**Three mechanisms, because one was not enough — and each was measured before it was chosen.**
+
+*Scoping* bounds the lines. Root levels came out at 4–14 boxes and 1–25 edges on every repo.
+
+*Quiet-collapse* bounds the boxes, which scoping does not: `svelte/tests/runtime-legacy/samples/`
+is 1,209 children with zero edges among them, and `apps/v4/examples/base/` is 513. Children
+nothing in the scope connects to fold into one box. It fires on five of the nine repos and costs
+nothing on the others — `nx/src/command-line/` stays 33 boxes, `runtime-core/src/` stays 37.
+
+*A threshold* bounds what is drawn. Dense levels survive both rules above:
+`packages/excalidraw/components/` is 165 boxes and 362 edges. 362 strokes say strictly less than
+none plus a sentence saying how many there are, so past 120 the level draws none and says so.
+Selection still draws its own, which was the only legible thing there anyway.
+
+**Edges are classified into five counted buckets, not filtered.**
+Inside, self, crossing in, crossing out, wholly outside. Counted rather than inferred, so their
+sum can be checked against the edge total — an edge belonging to no bucket is a connection the
+reader never learns about, and that failure is silent by nature. Conservation is asserted at
+every level of every repository. Whatever crosses the boundary goes to rails on either side
+rather than being dropped.
+
+**Rejected: splitting the dominant module and merging the tail.**
+It over-split. Excalidraw's largest module became `packages/astro/test/fixtures/`-shaped noise
+and its edge count went from 7 to 81. The rule that survived splits the largest module holding
+at least a fifth of the repository, repeatedly, while the total stays within twelve — so a
+monorepo shows its real top-level shape rather than either one box labelled `packages/` or nx's
+fifty-seven workspace packages.
+
+**Workspaces name modules; they do not choose the level.**
+The resolver had been discovering them to resolve cross-package imports and throwing them away.
+They are the truest boundary a repo declares about itself, so they supply names and entry
+points — but grouping by them directly gives nx 57 boxes, which is not a picture.
+
+**A correction to M7.** That section argued for *longest*-path depth so edges never point
+backwards. True, and it is still longest path — but the raw numbers are not usable as labels:
+on excalidraw depth reached **648**, not because anything is 648 imports deep but because that
+is the longest chain the repository can string together. Depths are now ranks among the depths
+that occur, which is monotonic and so preserves the property longest path was chosen for.
+Within a scope they are recomputed over the few dozen boxes present, because a folder's global
+depth is the minimum over everything inside it — at the root, where every module contains
+something shallow, that collapsed the entire axis into one column.
+
+**Counts left the header for a report.**
+`cycles 5 · unreachable 14` says something is wrong without saying what, where, or whether it
+matters. Each row now names the thing and what it costs — *change `packages/math/src/types.ts`
+and 531 files are downstream of it* — and clicking one goes and looks at it. Module cycles lead,
+because a loop between two files is often deliberate while a loop between two modules means the
+boundary is not real.
+
+**Bugs this cost, all caught by measurement rather than by reading the code.**
+Edges touching the selection were culled with everything else, so selecting a node the camera was
+not already on hid all of its connections — 98 edges drawn, 0 of them the selected node's own.
+Selecting did not move the camera, leaving the selection 4,300px off-screen. The halo drew the
+entire reachable set, 216 lines around a node with 10 real connections. And the scope's child
+list was declared `const` while quiet-collapse reassigns it, which only fires on repositories
+with large unconnected directories — neither excalidraw nor nx ever reached it.

@@ -24,6 +24,22 @@ cairn export graph.html      one file you can send anyone, no server needed
 
 Every command takes `--json`.
 
+## It opens on something you can read
+
+Point it at a repository and the first thing you see is the handful of parts it is made of —
+between four and fourteen boxes on every project measured, laid out in numbered columns so the
+first column is what nothing imports and the last is what imports nothing. Click a box to go
+inside it; the breadcrumb brings you back.
+
+Only the level you are looking at is drawn. Everything crossing its boundary is collected into
+rails at the edges rather than drawn as lines across the picture, so the view has a ceiling no
+matter how large the repository is. Where a level is genuinely dense, cairn says how many
+connections are there instead of drawing all of them, and clicking a file draws its own.
+
+The second tab is the report: import loops, imports reaching past a module's entry point into
+its internals, files nothing reaches, and where a change is felt furthest — each one named,
+with what it costs, and a click away from the thing itself.
+
 ## Why it exists
 
 Every tool in this space does one half. `madge` and `dependency-cruiser` map the files you wrote.
