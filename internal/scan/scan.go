@@ -17,8 +17,10 @@ import (
 	"sync"
 
 	"github.com/MihaiPosea/cairn/internal/graph"
+	"github.com/MihaiPosea/cairn/internal/join"
 	"github.com/MihaiPosea/cairn/internal/lang"
 	"github.com/MihaiPosea/cairn/internal/lang/jsts"
+	"github.com/MihaiPosea/cairn/internal/pkgs"
 	"github.com/MihaiPosea/cairn/internal/resolve"
 )
 
@@ -65,6 +67,23 @@ type Result struct {
 	// repo has them and we did not load them, the unresolved rate explodes and
 	// this is the first thing to check.
 	AliasesLoaded bool
+
+	// Packages is the external half of the graph, nil if packages were skipped.
+	Packages *pkgs.Graph
+	// Join reports what merging the two halves revealed.
+	Join *join.Report
+	// Disagree is the lockfile-versus-disk comparison, nil if unavailable.
+	Disagree *pkgs.Disagreement
+}
+
+// Options controls how much work a scan does.
+type Options struct {
+	// SkipPackages builds only the file graph. Faster, and all that is needed
+	// for questions about your own code.
+	SkipPackages bool
+	// MeasureSizes walks node_modules to get installed byte sizes. It is the
+	// most expensive thing cairn does, so it is opt-in.
+	MeasureSizes bool
 }
 
 // UnresolvedRate is the share of resolvable specifiers that did not resolve.
@@ -82,8 +101,11 @@ type parsed struct {
 	err     error
 }
 
-// Run scans the repo rooted at dir.
-func Run(dir string) (*Result, error) {
+// Run scans the repo rooted at dir with default options.
+func Run(dir string) (*Result, error) { return RunWith(dir, Options{}) }
+
+// RunWith scans the repo rooted at dir.
+func RunWith(dir string, opts Options) (*Result, error) {
 	root, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
@@ -131,7 +153,31 @@ func Run(dir string) (*Result, error) {
 		return res.Unresolved[i].Line < res.Unresolved[j].Line
 	})
 	sort.Strings(res.ParseFailures)
+
+	if !opts.SkipPackages {
+		attachPackages(root, res, opts)
+	}
 	return res, nil
+}
+
+// attachPackages loads the package half and joins it onto the file graph.
+//
+// Failure here degrades the scan rather than ending it: a repo with no
+// node_modules and no lockfile still has a perfectly good file graph, and
+// answering half the questions beats answering none.
+func attachPackages(root string, res *Result, opts Options) {
+	pg, err := pkgs.Load(root)
+	if err != nil || pg == nil {
+		return
+	}
+	if opts.MeasureSizes {
+		_ = pkgs.MeasureSizes(root, pg)
+	}
+	res.Packages = pg
+	res.Join = join.Apply(res.Graph, pg)
+	if d, err := pkgs.Compare(root, pg); err == nil {
+		res.Disagree = d
+	}
 }
 
 // parseAll fans out across CPUs and funnels results back through one channel.

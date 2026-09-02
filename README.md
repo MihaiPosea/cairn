@@ -4,8 +4,12 @@
 
 Point it at a repo it has never seen. No config, no migration, nothing to adopt.
 
-Your `package.json` says 13 dependencies. Your `node_modules` has 312 packages and 394 MB in it.
-cairn shows you the path between those two numbers — and which of your own files is responsible.
+Your `package.json` declares 13 dependencies. Your lockfile names 109. Your `node_modules` holds 51
+of them and weighs 394 MB. cairn shows you the path between those numbers — and which of your own
+files is responsible for it.
+
+(Those are real figures from a small Next.js site. The gap between "locked" and "on disk" is optional
+and platform-specific packages; most tools pick one of the two numbers silently.)
 
 ```
 cairn scan .                 build the graph, summarise it

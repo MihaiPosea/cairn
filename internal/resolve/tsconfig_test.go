@@ -16,8 +16,8 @@ func TestStripJSONC(t *testing.T) {
   "c": [1, 2, 3,],
 }`)
 	var out map[string]any
-	if err := json.Unmarshal(stripJSONC(in), &out); err != nil {
-		t.Fatalf("stripped output is not valid JSON: %v\n%s", err, stripJSONC(in))
+	if err := json.Unmarshal(StripJSONC(in), &out); err != nil {
+		t.Fatalf("stripped output is not valid JSON: %v\n%s", err, StripJSONC(in))
 	}
 	if out["b"] != "keeps // this and /* this */ inside the string" {
 		t.Errorf("comment stripping damaged a string literal: %q", out["b"])

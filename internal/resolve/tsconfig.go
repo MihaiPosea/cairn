@@ -59,7 +59,7 @@ func loadInto(cfg *TSConfig, path, repoRoot string, depth int) error {
 	}
 
 	var raw rawTSConfig
-	if err := json.Unmarshal(stripJSONC(data), &raw); err != nil {
+	if err := json.Unmarshal(StripJSONC(data), &raw); err != nil {
 		// A malformed tsconfig should degrade to "no aliases", not kill the
 		// scan. The unresolved rate will show the cost.
 		return fmt.Errorf("parsing %s: %w", path, err)
@@ -138,14 +138,14 @@ func resolveExtends(spec, fromDir, repoRoot string) string {
 	}
 }
 
-// stripJSONC removes comments and trailing commas so encoding/json can read a
+// StripJSONC removes comments and trailing commas so encoding/json can read a
 // tsconfig.
 //
 // tsconfig.json is not JSON. It permits // and /* */ comments and trailing
 // commas, and virtually every real one uses them. Reaching for a JSON5 library
 // would be the obvious move; a byte scanner that tracks string state is ~40
 // lines, adds no dependency, and is exactly as correct for this input.
-func stripJSONC(src []byte) []byte {
+func StripJSONC(src []byte) []byte {
 	out := make([]byte, 0, len(src))
 	inString, escaped := false, false
 
