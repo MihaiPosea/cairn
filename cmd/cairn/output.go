@@ -30,6 +30,7 @@ type summaryOut struct {
 	AliasesLoaded  bool    `json:"tsconfig_aliases_loaded"`
 	CacheHits      int     `json:"cache_hits"`
 	CacheMisses    int     `json:"cache_misses"`
+	CaseMismatches int     `json:"case_mismatches"`
 
 	PackageSource       string   `json:"package_source,omitempty"`
 	Declared            int      `json:"declared,omitempty"`
@@ -56,6 +57,7 @@ func summary(res *scan.Result) summaryOut {
 		AliasesLoaded:  res.AliasesLoaded,
 		CacheHits:      res.CacheHits,
 		CacheMisses:    res.CacheMisses,
+		CaseMismatches: len(res.CaseMismatches),
 	}
 	if res.Packages != nil {
 		out.PackageSource = res.Packages.Source
@@ -101,6 +103,18 @@ func printSummary(res *scan.Result) {
 			break
 		}
 		fmt.Printf("      %s:%d  %s — %s\n", u.File, u.Line, u.Specifier, u.Reason)
+	}
+
+	if n := len(res.CaseMismatches); n > 0 {
+		fmt.Printf("\n  %-22s %d\n", "case mismatches", n)
+		fmt.Println("      these work on macOS and Windows and fail on Linux")
+		for i, c := range res.CaseMismatches {
+			if i == 5 {
+				fmt.Printf("      … and %d more\n", n-5)
+				break
+			}
+			fmt.Printf("      %s:%d  %s\n", c.File, c.Line, c.Reason)
+		}
 	}
 
 	printPackages(res)

@@ -59,6 +59,12 @@ type Result struct {
 	// output. This is the tool's honesty metric and is printed on every scan.
 	Unresolved []Unresolvable
 
+	// CaseMismatches are imports whose spelling differs from the file on disk.
+	//
+	// These work on macOS and Windows and fail on Linux, so they are usually
+	// discovered by a CI failure rather than by anyone reading the code.
+	CaseMismatches []Unresolvable
+
 	// Unanalyzable counts import(expr) calls — real dependencies on something
 	// we cannot name. Reported separately because they are a different problem
 	// from a broken import.
@@ -306,6 +312,13 @@ func addImport(res *Result, r *resolve.Resolver, fromFile string, imp lang.RawIm
 	out := r.Resolve(fromFile, imp.Specifier)
 	if out.Via != "" {
 		res.ResolvedVia[out.Via]++
+	}
+
+	if out.CaseMismatch != "" {
+		res.CaseMismatches = append(res.CaseMismatches, Unresolvable{
+			File: fromFile, Specifier: imp.Specifier, Line: imp.Line, Kind: imp.Kind,
+			Reason: "imports " + out.CaseMismatch + " but the file on disk is " + filepath.Base(out.Path) + "; this breaks on Linux",
+		})
 	}
 
 	var to *graph.Node
