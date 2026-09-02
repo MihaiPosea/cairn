@@ -383,3 +383,46 @@ across all four.
 
 One known false positive is recorded rather than fixed: `require` shadowed by a local parameter is
 still treated as a module import, because cairn does no scope analysis.
+
+---
+
+## Testing beyond examples
+
+Example-based tests only check the cases the author thought of, which is the same set of cases the
+code was written for. Four techniques that do not share that blind spot:
+
+**Fuzzing.** Go's native fuzzer found a real bug in six seconds: `import "0\000"` decodes an octal
+escape to a NUL byte, and that specifier then flowed into filepath handling, a node ID, the JSON
+output and the HTML page. Specifiers containing control characters are now reported as unanalyzable
+rather than dropped — something genuinely is being imported.
+
+After the fix: 76k parser executions, 8.2M resolver executions, 13.7M JSONC-scanner executions, all
+clean.
+
+The fuzzers assert *properties*, not outputs, because a fuzzer has no idea what the right answer is:
+
+- no input may make the resolver return a path that escapes the repository
+- stripping comments must never change what valid JSON parses to — a mangled tsconfig would silently
+  lose path aliases, and the only symptom would be a mysteriously high unresolved rate
+- a parsed specifier may never contain a NUL or a newline
+
+**Property tests over random graphs.** 660 randomly generated DAGs, checking that `TopoOrder` emits
+every node exactly once and always after its dependencies; that a deliberately closed loop is always
+detected and the reported path is a real walk through the graph; and that repeated runs on the same
+graph are identical. Plus a 400-node complete graph, the worst realistic shape, to confirm it
+terminates.
+
+**A mutation soak.** The incremental index is where a bug is most likely and least visible: a stale
+entry produces a plausible graph that is quietly out of date, and nothing in the output would say so.
+So the soak edits, adds, deletes, renames and reverts files across 40 rounds, and after every single
+step compares the cached scan against one with the cache disabled — node for node, edge for edge.
+
+**An injection tripwire.** File paths and import specifiers both come off disk and are embedded in
+the exported page. `encoding/json` escapes `<`, `>` and `&` by default, which is the only thing
+making that safe — and it is exactly the kind of protection someone removes while prettifying output
+with `SetEscapeHTML(false)`. The test asserts that exactly one `</script>` survives in the rendered
+document, with a comment saying why.
+
+**Concurrency, all under `-race`.** Twelve simultaneous scans of one repo agree node for node and
+leave the shared cache usable. The resolver and the index hold up under sixteen goroutines. And two
+repos containing byte-identical files never share cache entries.
