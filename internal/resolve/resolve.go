@@ -129,6 +129,9 @@ type Resolver struct {
 	rootConfig  *TSConfig
 	rootAliases []alias
 
+	// subpaths caches the nearest package.json "imports" map for a directory.
+	subpaths sync.Map
+
 	// configs caches the nearest tsconfig for a directory: dir -> *dirConfig.
 	//
 	// A monorepo puts a tsconfig in each package, and only the nearest one
@@ -304,7 +307,19 @@ func (r *Resolver) Resolve(fromFile, specifier string) Result {
 		return Result{Kind: ToBuiltin, Name: "node:" + rest, Via: "node-prefix"}
 	}
 
-	// 1b. any other scheme, or a framework namespace prefix.
+	// 1b. a '#' subpath import declared in package.json "imports".
+	//
+	// Tried before the virtual-module check, because a manifest that explains
+	// the specifier is better information than "some framework invents this".
+	if strings.HasPrefix(specifier, "#") {
+		fromDir := filepath.Dir(filepath.Join(r.root, filepath.FromSlash(fromFile)))
+		if res, ok := r.tryAliases(r.subpathConfigFor(fromDir), specifier); ok {
+			res.Via = "subpath-imports"
+			return res
+		}
+	}
+
+	// 1c. any other scheme, or a framework namespace prefix.
 	//
 	// Frameworks synthesise modules that never exist on disk: astro:content,
 	// virtual:uno.css, bun:sqlite, $app/stores, #imports, and Deno's npm: /
@@ -630,15 +645,28 @@ var schemePattern = regexp.MustCompile(`^[a-z][a-z0-9+.\-]+:`)
 
 // namespacePrefixes are framework conventions that are not schemes.
 //
-// SvelteKit uses $app and $env; Node's own subpath imports and Nuxt both use
-// a leading '#'. None of these are files, and none can be resolved without
+// SvelteKit uses $app and $env; Node's own subpath imports and Nuxt both use a
+// leading '#'. None of these are files, and none can be resolved without
 // running the framework's own resolver.
 var namespacePrefixes = []string{"$app/", "$env/", "$service-worker", "#"}
+
+// generatedRelative are relative specifiers a framework synthesises.
+//
+// SvelteKit writes "./$types" into .svelte-kit during `svelte-kit sync`, so it
+// is absent from a fresh checkout and looks like a broken relative import.
+// Found in the TanStack Query repo, where it was most of the remaining
+// unresolved imports.
+var generatedRelative = []string{"./$types", "../$types", "./$houdini", "./$env"}
 
 // virtualModule reports whether a specifier names a synthesised module.
 func virtualModule(spec string) (string, bool) {
 	if schemePattern.MatchString(spec) {
 		return spec, true
+	}
+	for _, g := range generatedRelative {
+		if spec == g || strings.HasPrefix(spec, g+"/") {
+			return strings.TrimLeft(spec, "./"), true
+		}
 	}
 	for _, p := range namespacePrefixes {
 		if strings.HasPrefix(spec, p) {

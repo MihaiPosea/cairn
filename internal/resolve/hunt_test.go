@@ -179,3 +179,72 @@ func TestMissedAliasFallsThroughToPackage(t *testing.T) {
 			got.Kind, got.Package)
 	}
 }
+
+// Node subpath imports are declared in package.json and are genuinely
+// resolvable, so they must not be written off as virtual modules.
+func TestSubpathImports(t *testing.T) {
+	root := hrepo(t, map[string]string{
+		"package.json": `{
+			"name":"app",
+			"imports":{
+				"#internal/*": "./src/internal/*.js",
+				"#config": {"node":"./src/config.node.ts","default":"./src/config.ts"},
+				"#alt": ["./missing.ts", "./src/fallback.ts"]
+			}
+		}`,
+		"src/app.ts":              "",
+		"src/internal/helpers.ts": "",
+		"src/config.node.ts":      "",
+		"src/config.ts":           "",
+		"src/fallback.ts":         "",
+	})
+	r := resolver(t, root)
+
+	for _, tc := range []struct{ spec, want string }{
+		{"#internal/helpers", "src/internal/helpers.ts"},
+		{"#config", "src/config.node.ts"}, // "node" is preferred over "default"
+		{"#alt", "src/fallback.ts"},       // first candidate missing, second wins
+	} {
+		got := r.Resolve("src/app.ts", tc.spec)
+		if got.Kind != ToFile || got.Path != tc.want {
+			t.Errorf("Resolve(%q) = %v %q (%s), want file %q",
+				tc.spec, got.Kind, got.Path, got.Reason, tc.want)
+		}
+	}
+}
+
+// An ESM-style "./x.js" target must still find x.ts, as elsewhere.
+func TestSubpathImportsWithJSExtension(t *testing.T) {
+	root := hrepo(t, map[string]string{
+		"package.json": `{"imports":{"#lib/*":"./lib/*.js"}}`,
+		"src/a.ts":     "",
+		"lib/thing.ts": "",
+	})
+	got := resolver(t, root).Resolve("src/a.ts", "#lib/thing")
+	if got.Path != "lib/thing.ts" {
+		t.Errorf("got %v %q, want lib/thing.ts", got.Kind, got.Path)
+	}
+}
+
+// In a monorepo, the nearest package.json wins.
+func TestSubpathImportsUseNearestManifest(t *testing.T) {
+	root := hrepo(t, map[string]string{
+		"package.json":                    `{"imports":{"#x":"./root-x.ts"}}`,
+		"root-x.ts":                       "",
+		"packages/app/package.json":       `{"imports":{"#x":"./inner-x.ts"}}`,
+		"packages/app/inner-x.ts":         "",
+		"packages/app/src/main.ts":        "",
+	})
+	got := resolver(t, root).Resolve("packages/app/src/main.ts", "#x")
+	if got.Path != "packages/app/inner-x.ts" {
+		t.Errorf("got %q, want packages/app/inner-x.ts (the nearest manifest)", got.Path)
+	}
+}
+
+// With no manifest to explain it, a '#' specifier is still virtual.
+func TestUnexplainedHashSpecifierStaysVirtual(t *testing.T) {
+	root := hrepo(t, map[string]string{"package.json": `{}`, "a.ts": ""})
+	if got := resolver(t, root).Resolve("a.ts", "#imports"); got.Kind != ToVirtual {
+		t.Errorf("got %v, want virtual when no manifest declares it", got.Kind)
+	}
+}

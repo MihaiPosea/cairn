@@ -529,3 +529,60 @@ exist in a fresh checkout
 Aggregating by category rather than by largest group is what makes that sentence true — astro's
 spread across ninety-odd path prefixes, but 98% share one cause, and the biggest single group is
 only 28%.
+
+---
+
+## The rest of the checklist
+
+**Node subpath imports.** `#internal/*` declared in `package.json` `"imports"` were being written off
+as virtual modules alongside `astro:` and `virtual:`. They are genuinely resolvable — the manifest
+explains them — so they now resolve properly, using the nearest `package.json` and preferring
+source-shaped conditions. A `#` specifier stays virtual only when no manifest accounts for it.
+
+**Hostile filesystems.** A real machine has directories you cannot read, symlinks pointing nowhere,
+symlinks pointing at themselves, and filenames nobody expected. All handled: an unreadable directory
+does not abort a scan, symlink loops terminate (`filepath.WalkDir` does not follow them), and
+unicode, emoji, spaces, quotes and semicolons in filenames all resolve. Sixty levels of nesting is
+fine.
+
+**Scale.** A generated 50,001-file repo with 74,843 imports:
+
+| | |
+|---|---|
+| cold scan | 7.4 s, 264 MB peak |
+| warm scan | 1.1 s, 122 MB peak |
+| `cycles` | 1.1 s |
+| `dead` | 1.0 s |
+| `blast` | 2.1 s |
+| `export` | **hung — over 2 minutes** |
+
+That last one was a real bug. The web payload computed a *transitive* blast radius for every node in
+order to decide which to draw — O(nodes × edges), or 50,000 × 74,843. Ranking now uses direct
+dependents, one pass over the edges, and the exact transitive figure is computed only for the ≤1,200
+nodes that survive, always against the full graph so the number stays true. Export went from a hang
+to 7 seconds.
+
+**TypeScript project references** needed no change, which was worth confirming rather than assuming:
+a composite monorepo imports across packages by package name, which workspace resolution already
+handles. There is a fixture proving it.
+
+**SvelteKit's generated `./$types`** is written into `.svelte-kit` by `svelte-kit sync`, so it is
+absent from a fresh checkout and looked like a broken relative import. It was most of what remained
+in the TanStack Query repo.
+
+## Nine real repositories
+
+| repo | files | imports | unresolved |
+|---|---|---|---|
+| excalidraw | 668 | 4,692 | **0.00%** |
+| nx | 5,440 | 21,120 | 0.25% |
+| tanstack-query | 1,230 | 4,458 | 0.36% |
+| turborepo | 1,284 | 3,255 | 1.20% |
+| svelte | 8,060 | 7,725 | 1.27% |
+| vue-core | 538 | 2,153 | 2.14% |
+| create-t3-app | 240 | 768 | 2.60% |
+| astro | 4,615 | 11,614 | 8.05% |
+| shadcn/ui | 3,947 | 19,895 | 23.24% |
+
+75,680 imports across nine repositories. The two high numbers are true findings about an unbuilt
+checkout, not failures — and the tool now says which, in one line.

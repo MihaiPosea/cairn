@@ -89,18 +89,31 @@ func Build(res *scan.Result, includePackages bool) *Payload {
 		}
 	}
 
-	// When there are too many nodes, keep the ones with the largest blast
-	// radius: those are the files that matter, and a truncated view of the
-	// load-bearing parts beats a complete view of nothing legible.
+	// When there are too many nodes, keep the most-depended-on: a truncated
+	// view of the load-bearing parts beats a complete view of nothing legible.
+	//
+	// Ranking uses direct dependents, which is one pass over the edges.
+	// Ranking by *transitive* blast radius would need a traversal per node —
+	// O(nodes x edges), which on a 50,000-file repo with 75,000 edges took
+	// longer than two minutes and looked like a hang. Direct dependents is a
+	// good proxy for "load-bearing" and costs nothing.
+	truncated := 0
+	if len(ids) > maxNodes {
+		direct := make(map[string]int, len(ids))
+		for _, id := range ids {
+			direct[id] = len(g.Dependents(id))
+		}
+		sort.SliceStable(ids, func(i, j int) bool { return direct[ids[i]] > direct[ids[j]] })
+		truncated = len(ids) - maxNodes
+		ids = ids[:maxNodes]
+	}
+
+	// The exact transitive blast radius is computed only for the nodes that
+	// survive, and always against the full graph so the number is true rather
+	// than relative to what happens to be drawn.
 	blast := make(map[string]int, len(ids))
 	for _, id := range ids {
 		blast[id] = len(query.ReachableFrom(g, id, query.AllEdges)) - 1
-	}
-	truncated := 0
-	if len(ids) > maxNodes {
-		sort.SliceStable(ids, func(i, j int) bool { return blast[ids[i]] > blast[ids[j]] })
-		truncated = len(ids) - maxNodes
-		ids = ids[:maxNodes]
 	}
 
 	deadRep := query.DeadFilesWith(g, res.ManifestEntries, len(res.Unanalyzable) > 0)
