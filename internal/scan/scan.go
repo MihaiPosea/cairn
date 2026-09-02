@@ -72,6 +72,14 @@ type Result struct {
 	// CacheHits and CacheMisses count files served from the parse cache.
 	CacheHits, CacheMisses int
 
+	// ResolvedVia counts how many specifiers each resolution rule handled.
+	//
+	// This is what makes a verification score mean something. A repo whose
+	// imports are all relative never exercises path aliases, so scoring 100%
+	// on it says nothing about alias handling. Reporting which rules actually
+	// ran turns "we passed" into "we passed, on these rules".
+	ResolvedVia map[string]int
+
 	// Packages is the external half of the graph, nil if packages were skipped.
 	Packages *pkgs.Graph
 	// Join reports what merging the two halves revealed.
@@ -138,6 +146,7 @@ func RunWith(dir string, opts Options) (*Result, error) {
 		Root:          root,
 		FilesScanned:  len(files),
 		AliasesLoaded: resolver.HasAliases(),
+		ResolvedVia:   map[string]int{},
 	}
 
 	// Every file becomes a node before any edge is added, so an edge can never
@@ -295,6 +304,9 @@ func addImport(res *Result, r *resolve.Resolver, fromFile string, imp lang.RawIm
 	}
 
 	out := r.Resolve(fromFile, imp.Specifier)
+	if out.Via != "" {
+		res.ResolvedVia[out.Via]++
+	}
 
 	var to *graph.Node
 	switch out.Kind {

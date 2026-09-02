@@ -7,6 +7,7 @@ import (
 	"github.com/MihaiPosea/cairn/internal/graph"
 	"github.com/MihaiPosea/cairn/internal/query"
 	"github.com/MihaiPosea/cairn/internal/scan"
+	"github.com/MihaiPosea/cairn/internal/verify"
 )
 
 // ── scan ────────────────────────────────────────────────────────────────────
@@ -372,6 +373,14 @@ func shortAll(ids []string) []string {
 	return out
 }
 
+func keysOf(m map[string]int) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
 func plural(n int, word string) string {
 	if n == 1 {
 		return fmt.Sprintf("%d %s", n, word)
@@ -387,4 +396,82 @@ func sorted(s []string) []string {
 		}
 	}
 	return out
+}
+
+// ── verify ──────────────────────────────────────────────────────────────────
+
+func runVerify(root string, asJSON bool) error {
+	rep, err := verify.Run(root)
+	if err != nil {
+		return err
+	}
+	if !rep.Available {
+		return fmt.Errorf("cannot verify: %s (verification needs node and a typescript install in the repo)", rep.Reason)
+	}
+
+	if asJSON {
+		return emit(map[string]any{
+			"ts_version": rep.TSVersion,
+			"compared":   rep.Compared,
+			"agreed":     rep.Agreed,
+			"precision":  rep.Precision(),
+			"recall":     rep.Recall(),
+			"wrong":      len(rep.Wrong),
+			"missed":     len(rep.CairnMissed),
+			"extra":      len(rep.CairnExtra),
+			"explained":  len(rep.Explained),
+			"rules":      rep.RulesExercised,
+		})
+	}
+
+	fmt.Printf("%s\n\n", root)
+	fmt.Printf("  checked against TypeScript %s, specifier by specifier\n\n", rep.TSVersion)
+	fmt.Printf("  %-22s %d\n", "imports compared", rep.Compared)
+	fmt.Printf("  %-22s %d\n", "agreed", rep.Agreed)
+	fmt.Printf("  %-22s %.2f%%\n", "precision", rep.Precision()*100)
+	fmt.Printf("  %-22s %.2f%%\n", "recall", rep.Recall()*100)
+
+	section := func(title string, list []verify.Disagreement, note string) {
+		if len(list) == 0 {
+			return
+		}
+		fmt.Printf("\n  %s (%d)\n", title, len(list))
+		if note != "" {
+			fmt.Printf("      %s\n", note)
+		}
+		for i, d := range list {
+			if i == 8 {
+				fmt.Printf("      … and %d more\n", len(list)-8)
+				break
+			}
+			fmt.Printf("      %s  %q\n          cairn: %s\n          tsc:   %s\n",
+				d.File, d.Specifier, d.Cairn, d.Oracle)
+		}
+	}
+
+	if len(rep.RulesExercised) > 0 {
+		fmt.Printf("\n  rules this repo actually exercised\n")
+		fmt.Println("      a perfect score only covers the rules that ran")
+		for _, rule := range sorted(keysOf(rep.RulesExercised)) {
+			fmt.Printf("      %-20s %d\n", rule, rep.RulesExercised[rule])
+		}
+	}
+
+	section("resolved differently", rep.Wrong, "these are real bugs")
+	section("imports cairn did not find", rep.CairnMissed, "holes in the parser")
+	section("imports TypeScript did not report", rep.CairnExtra,
+		"usually require() calls, which its preprocessor treats differently")
+
+	if n := len(rep.Explained); n > 0 {
+		fmt.Printf("\n  known differences (%d)\n", n)
+		fmt.Println("      counted as agreement, listed so the number is not hidden")
+		for i, d := range rep.Explained {
+			if i == 4 {
+				fmt.Printf("      … and %d more\n", n-4)
+				break
+			}
+			fmt.Printf("      %s  %q — %s\n", d.File, d.Specifier, d.Class)
+		}
+	}
+	return nil
 }

@@ -222,3 +222,44 @@ cached. The whole 5,000-file cache is 528 KB.
 Rejected: SQLite. The access pattern is "load everything at startup, save
 everything at exit" — that is a file, not a database. A single gob file needs
 no dependency and no schema migration.
+
+---
+
+## M6 — measuring whether the graph is true
+
+**The oracle is TypeScript's own resolver, not a second implementation.**
+`internal/verify` runs `ts.preProcessFile` and `ts.resolveModuleName` over the same files and diffs
+the answers specifier by specifier. A reimplementation written by the same author would share the
+same misunderstandings and agree for the wrong reasons.
+
+Results, against TypeScript 5.9.3:
+
+| repo | imports compared | precision | recall |
+|---|---|---|---|
+| personal-website | 18 | 100% | 100% |
+| travel-site | 57 | 100% | 100% |
+| Personal Portfolio | 25 | 100% | 100% |
+| generated, 5,001 files | 10,442 | 100% | 100% |
+
+**Three differences are counted as agreement, and all three are listed anyway** so the number cannot
+hide behind them: non-code assets (`./globals.css`, which TypeScript refuses to resolve and cairn
+resolves on purpose), Node builtins in files outside the tsconfig program, and cases where both
+resolvers failed on the same specifier.
+
+**A verifier that cannot fail proves nothing, so it was tested by sabotage.**
+Corrupting the tsconfig alias substitution dropped precision from 100% to **2.83%** with 10,146
+disagreements on the alias-heavy repo. The harness detects real breakage.
+
+**But the same sabotage was invisible on `travel-site`** — which has a `@/*` alias configured in its
+tsconfig and not one import that uses it. That is the important finding, and it is why
+`verify` now reports **which rules the repo actually exercised**:
+
+```
+bare                 12
+node-prefix          12
+relative             33
+```
+
+No `tsconfig-paths` line. A perfect score on that repo says nothing whatsoever about alias handling.
+Reporting coverage turns "we passed" into "we passed, on these rules" — which is the only version of
+the claim that survives someone checking it.

@@ -25,6 +25,7 @@ usage:
   cairn why <package>           the path that dragged this package in
   cairn cycles                  import cycles, as readable chains
   cairn cost <package>          packages and bytes this one import pulls in
+  cairn verify                  check cairn's graph against TypeScript's own resolver
 
 flags:
   --dir <path>                  repo to scan (default: .)
@@ -111,6 +112,9 @@ func run(args []string) error {
 		return withScan(root, false, func(res *scan.Result) error {
 			return runCycles(res, *asJSON)
 		})
+
+	case "verify":
+		return runVerify(root, *asJSON)
 
 	case "cost":
 		target, err := needsArg()
