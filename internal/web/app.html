@@ -602,7 +602,7 @@ function localDepths(kids, edges) {
 }
 
 function relayout() {
-  const kids = scopeChildren();
+  let kids = scopeChildren();
   childMemo = new Map();
   railMemo = new Map();
 
