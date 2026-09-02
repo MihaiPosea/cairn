@@ -8,13 +8,15 @@
   :root {
     --paper:#F7F8F7; --surface:#fff; --surface-2:#EFF2F1; --ink:#141A19;
     --ink-soft:#4E5957; --rule:#DCE2E0; --accent:#146B62; --accent-soft:#E2EFEC;
-    --crit:#A32B22; --pkg:#5B4A8A; --pkg-soft:#ECE7F5; --edge:#C9D2CF; --edge-hot:#146B62;
+    --crit:#A32B22; --pkg:#5B4A8A; --pkg-soft:#ECE7F5; --edge:#C9D2CF;
+    --out:#146B62; --in:#9A5B18;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --paper:#101413; --surface:#171D1C; --surface-2:#1E2625; --ink:#E7ECEA;
       --ink-soft:#97A3A0; --rule:#2B3432; --accent:#5CC4B6; --accent-soft:#14302C;
-      --crit:#E88376; --pkg:#B3A3DE; --pkg-soft:#241F33; --edge:#2B3432; --edge-hot:#5CC4B6;
+      --crit:#E88376; --pkg:#B3A3DE; --pkg-soft:#241F33; --edge:#2B3432;
+      --out:#5CC4B6; --in:#E0A45C;
     }
   }
   * { box-sizing:border-box; }
@@ -69,6 +71,41 @@
   .note { background:var(--accent-soft); border-left:2px solid var(--accent);
           padding:7px 9px; margin:10px 0 0; font-size:11px; color:var(--ink-soft); }
   .note.bad { background:transparent; border-color:var(--crit); color:var(--crit); }
+  .imp { padding:5px 0; border-bottom:1px solid var(--rule); cursor:pointer; }
+  .imp:hover .who { color:var(--accent); }
+  .imp .who { font:11px ui-monospace,Menlo,monospace; color:var(--ink); display:block; }
+  .imp .who .d { color:var(--ink-soft); }
+  .imp code {
+    display:block; font:10.5px/1.5 ui-monospace,Menlo,monospace; color:var(--ink-soft);
+    background:var(--surface-2); padding:3px 6px; margin-top:3px; border-radius:2px;
+    white-space:pre; overflow-x:auto; border-left:2px solid var(--rule);
+  }
+  .imp.in code { border-left-color:var(--in); }
+  .imp.out code { border-left-color:var(--out); }
+  .imp .ln { color:var(--ink-soft); font-size:10px; float:right; }
+  h3 .k { display:inline-block; width:7px; height:7px; margin-right:5px; vertical-align:1px; }
+  h3 .k.in { background:var(--in); } h3 .k.out { background:var(--out); }
+
+  #code {
+    position:absolute; inset:0 0 0 auto; width:min(760px, 62vw); z-index:5;
+    background:var(--surface); border-left:1px solid var(--rule);
+    display:none; flex-direction:column; box-shadow:-16px 0 40px rgba(0,0,0,.22);
+  }
+  #code.on { display:flex; }
+  #code header {
+    display:flex; align-items:center; gap:10px; padding:8px 14px;
+    border-bottom:1px solid var(--rule); background:var(--surface-2);
+  }
+  #code .path { font:11px ui-monospace,Menlo,monospace; color:var(--ink-soft);
+                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #code .body { flex:1; overflow:auto; padding:8px 0 40px; }
+  #code table { border-collapse:collapse; width:100%; font:11.5px/1.6 ui-monospace,Menlo,monospace; }
+  #code td { padding:0 10px; vertical-align:top; white-space:pre; }
+  #code td.n { text-align:right; color:var(--ink-soft); user-select:none; width:1%;
+               border-right:1px solid var(--rule); }
+  #code tr.hit { background:var(--accent-soft); }
+  #code tr.hit td.n { color:var(--accent); font-weight:600; }
+  #code tr.here { background:var(--accent-soft); outline:1px solid var(--accent); }
   .empty { color:var(--ink-soft); font-size:12px; }
   .empty b { color:var(--ink); display:block; margin-bottom:8px; font-size:13px; }
   input, button {
@@ -112,7 +149,11 @@
 </header>
 <div id="chips"></div>
 <main>
-  <div id="stage"><canvas id="c"></canvas><canvas id="mini"></canvas></div>
+  <div id="stage"><canvas id="c"></canvas><canvas id="mini"></canvas>
+    <div id="code"><header><button class="chip" id="codeclose">✕ close</button>
+      <span class="path" id="codepath"></span></header>
+      <div class="body" id="codebody"></div></div>
+  </div>
   <aside id="panel"></aside>
 </main>
 <div class="legend">
@@ -134,9 +175,9 @@ const DATA = {{.Data}};
 // a container drawn around its contents, so you can see where you are without
 // reading a breadcrumb.
 
-const NW = 232, NH = 22, HGAP = 26, VGAP = 6;
-const PAD = 12, HEADER = 22;      // container padding and title bar
-const LAYER_GAP = 46;
+const NW = 236, NH = 24, HGAP = 34, VGAP = 12;
+const PAD = 16, HEADER = 26;      // container padding and title bar
+const LAYER_GAP = 72;
 
 const files = DATA.nodes;
 const byId = new Map(files.map(n => [n.id, n]));
@@ -273,6 +314,7 @@ function packChildren(kids) {
   let x = 0, maxH = 0;
   const cols = [];
   for (const d of depths) {
+    const spanStart = x;
     let colTop = 0, colW = 0, colX = x;
     for (const k of byLayer.get(d)) {
       if (colTop > 0 && colTop + k.bh > cap) {   // start a new sub-column
@@ -285,7 +327,7 @@ function packChildren(kids) {
       maxH = Math.max(maxH, colTop - VGAP);
     }
     x = colX + colW + LAYER_GAP;
-    cols.push(colX);
+    cols.push({ depth: d, x: spanStart, w: colX + colW - spanStart, n: byLayer.get(d).length });
   }
   return { w: Math.max(0, x - LAYER_GAP), h: maxH, cols };
 }
@@ -323,7 +365,7 @@ function relayout() {
   }
 
   view = { boxes, edges: [...agg.values()], width: b.w, height: b.h,
-           index: new Map(boxes.map(x => [x.id, x])) };
+           layers: b.cols, index: new Map(boxes.map(x => [x.id, x])) };
   for (const x of boxes) x.text = undefined;
   refreshChips();
 }
@@ -344,7 +386,8 @@ function readColors() {
   C = { paper: css('--paper'), surface: css('--surface'), surface2: css('--surface-2'),
         ink: css('--ink'), inkSoft: css('--ink-soft'), rule: css('--rule'),
         accent: css('--accent'), accentSoft: css('--accent-soft'), crit: css('--crit'),
-        pkg: css('--pkg'), pkgSoft: css('--pkg-soft'), edge: css('--edge'), edgeHot: css('--edge-hot') };
+        pkg: css('--pkg'), pkgSoft: css('--pkg-soft'), edge: css('--edge'),
+        out: css('--out'), in: css('--in') };
 }
 
 function resize() {
@@ -390,13 +433,15 @@ function moveTo(nx, ny, ns, ms = 320) {
 const READABLE = 0.62;
 
 function fitParams() {
-  const w = Math.max(view.width, 1) + 24, h = Math.max(view.height, 1) + 24, pad = 30;
+  const HEAD = 46;   // room for the column numbers above the graph
+  const w = Math.max(view.width, 1) + 24, h = Math.max(view.height, 1) + 24 + HEAD, pad = 30;
   const both = Math.min((VW - pad * 2) / w, (VH - pad * 2) / h);
   let ns = both >= READABLE ? both : Math.max(READABLE, (VH - pad * 2) / h);
   ns = Math.min(ns, 1.1);
   const fitsW = w * ns <= VW - pad * 2;
   const fitsH = h * ns <= VH - pad * 2;
-  return [fitsW ? (VW - w * ns) / 2 : pad, fitsH ? (VH - h * ns) / 2 : pad, ns];
+  return [fitsW ? (VW - w * ns) / 2 : pad,
+          (fitsH ? (VH - h * ns) / 2 : pad) + HEAD * ns, ns];
 }
 function fit(animate = true) {
   const [a, b, c] = fitParams();
@@ -419,8 +464,45 @@ function render() {
   const x0 = -tx / s - m, y0 = -ty / s - m, x1 = (VW - tx) / s + m, y1 = (VH - ty) / s + m;
   if (s > 0.2 || selected) drawEdges(x0, y0, x1, y1, s > 0.28);
   drawBoxes(x0, y0, x1, y1);
+  drawLayerHeads();
   ctx.restore();
   drawMini();
+}
+
+// Number the columns.
+//
+// The left-to-right order is the whole point of the picture and nothing said
+// so. Column 1 is what nothing imports — the entry points — and each column
+// after it is one import further in, so "how deep is this file" becomes
+// something you can read off the axis instead of infer.
+function drawLayerHeads() {
+  const L = view.layers || [];
+  if (!L.length || s < 0.16) return;
+  const y = -34;
+  ctx.textBaseline = 'alphabetic';
+
+  for (let i = 0; i < L.length; i++) {
+    const l = L[i];
+    ctx.fillStyle = C.inkSoft;
+    ctx.globalAlpha = 0.5;
+    ctx.fillRect(l.x, y + 8, l.w, 1 / s * 1.2);
+    ctx.globalAlpha = 1;
+
+    ctx.font = '600 13px ui-monospace, Menlo, monospace';
+    ctx.fillStyle = C.accent;
+    const num = String(i + 1);
+    ctx.fillText(num, l.x, y);
+
+    if (s > 0.42) {
+      ctx.font = '11px ui-monospace, Menlo, monospace';
+      ctx.fillStyle = C.inkSoft;
+      const caption = i === 0
+        ? 'nothing imports these'
+        : i === 1 ? 'imported by column 1' : `${i} imports deep`;
+      ctx.fillText(caption + '  ·  ' + l.n, l.x + ctx.measureText(num).width + 12, y);
+    }
+  }
+  ctx.textBaseline = 'middle';
 }
 
 function anchor(x) {
@@ -439,7 +521,14 @@ function drawEdges(x0, y0, x1, y1, curved) {
     if (!a || !b) continue;
     if (Math.max(a.x + a.bw, b.x + b.bw) < x0 || Math.min(a.x, b.x) > x1) continue;
     if (Math.max(a.y + a.bh, b.y + b.bh) < y0 || Math.min(a.y, b.y) > y1) continue;
-    if (selected && hotSet.has(e.from) && hotSet.has(e.to)) { hot.push([a, b]); continue; }
+    if (selected && hotSet.has(e.from) && hotSet.has(e.to)) {
+      // Which side of the selection an edge sits on decides its colour.
+      const dir = (e.to === selected || upSet.has(e.to)) && e.from !== selected && !downSet.has(e.from) ? 'in'
+        : (e.from === selected || downSet.has(e.from)) ? 'out'
+        : (upSet.has(e.from) ? 'in' : 'out');
+      hot.push([a, b, dir]);
+      continue;
+    }
     buckets[e.n > 24 ? 2 : e.n > 4 ? 1 : 0].push([a, b]);
   }
 
@@ -455,11 +544,15 @@ function drawEdges(x0, y0, x1, y1, curved) {
   }
   if (hot.length) {
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = C.edgeHot;
-    ctx.lineWidth = 1.9 / s;
-    ctx.beginPath();
-    for (const [a, b] of hot) edgePath(a, b, true);
-    ctx.stroke();
+    for (const dir of ['in', 'out']) {
+      const set = hot.filter(h => h[2] === dir);
+      if (!set.length) continue;
+      ctx.strokeStyle = dir === 'in' ? C.in : C.out;
+      ctx.lineWidth = 2 / s;
+      ctx.beginPath();
+      for (const [a, b] of set) edgePath(a, b, true);
+      ctx.stroke();
+    }
   }
   ctx.globalAlpha = 1;
 }
@@ -659,18 +752,32 @@ addEventListener('keydown', e => {
   if (e.key === 'c') collapseAll();
 });
 
-function upstream(id) {
-  const inc = new Map();
-  for (const e of view.edges) (inc.get(e.to) || inc.set(e.to, []).get(e.to)).push(e.from);
-  const seen = new Set([id]); const q = [id];
-  while (q.length) for (const f of (inc.get(q.shift()) || [])) if (!seen.has(f)) { seen.add(f); q.push(f); }
-  for (const e of view.edges) if (e.from === id) seen.add(e.to);
-  return seen;
+// Two sets, not one: the things that would break if this changed, and the
+// things this one pulls in. Drawn in different colours, because "who depends on
+// me" and "what do I depend on" are opposite questions and a single highlight
+// answers neither clearly.
+let upSet = null, downSet = null;
+
+function relations(id) {
+  const inc = new Map(), outm = new Map();
+  for (const e of view.edges) {
+    (inc.get(e.to) || inc.set(e.to, []).get(e.to)).push(e.from);
+    (outm.get(e.from) || outm.set(e.from, []).get(e.from)).push(e.to);
+  }
+  const walk = (start, adj) => {
+    const seen = new Set(); const q = [start];
+    while (q.length) for (const n of (adj.get(q.shift()) || [])) if (!seen.has(n)) { seen.add(n); q.push(n); }
+    return seen;
+  };
+  upSet = walk(id, inc);
+  downSet = walk(id, outm);
+  return new Set([id, ...upSet, ...downSet]);
 }
 
 function select(id) {
   selected = id;
-  hotSet = id ? upstream(id) : null;
+  hotSet = id ? relations(id) : null;
+  if (!id) { upSet = downSet = null; }
   renderPanel(id ? view.index.get(id) : null);
   draw();
 }
@@ -728,10 +835,15 @@ function renderPanel(x) {
     return;
   }
 
+  // Aggregated edges lose the line they came from, so the raw edges are used
+  // here: this panel is about specific statements, not bundles.
   const deps = [], dependents = [];
-  for (const e of view.edges) {
-    if (e.from === x.id) deps.push(e);
-    if (e.to === x.id) dependents.push(e);
+  for (const e of DATA.edges) {
+    if (e.from === x.id) deps.push({ ...e, srcPath: x.label });
+    if (e.to === x.id) {
+      const f = byId.get(e.from);
+      dependents.push({ ...e, srcPath: f ? f.label : '' });
+    }
   }
   let html = `<div class="kind">${esc(x.kind)}</div><h2>${esc(x.base)}</h2>`;
   if (x.dir) html += `<div class="dir">${esc(x.dir)}</div>`;
@@ -742,26 +854,93 @@ function renderPanel(x) {
   if (size) html += `<div class="row"><span>installed size</span><span>${size}</span></div>`;
   if (x.note) html += `<div class="note${x.dead ? ' bad' : ''}">${esc(x.note)}</div>`;
 
-  const list = (title, es, key) => es.length ? `<h3>${title} (${es.length})</h3><ul>` +
-    es.slice(0, 50).map(e => {
-      const t = view.index.get(e[key]);
-      return `<li data-go="${esc(e[key])}">${esc(t ? t.base : e[key])}` +
-        (e.n > 1 ? `<span class="d"> ×${e.n}</span>` : '') + `</li>`;
-    }).join('') + '</ul>' : '';
-  html += list('imported by', dependents, 'from') + list('imports', deps, 'to');
+  // The import lines themselves, not just the names. A name says two files are
+  // connected; the line says what the connection is, which is what someone
+  // opened the panel to find out.
+  const list = (title, es, key, dir) => {
+    if (!es.length) return '';
+    return `<h3><i class="k ${dir}"></i>${title} (${es.length})</h3>` +
+      es.slice(0, 60).map(e => {
+        // The other end is often inside a folder that is still closed, so it
+        // has no box. Fall back to the file itself rather than printing a raw
+        // node id at the reader.
+        const t = view.index.get(e[key]) || byId.get(e[key]) || groups.get(e[key]);
+        const who = t ? `<span class="d">${esc(t.dir || '')}</span>${esc(t.base)}` : esc(e[key].replace(/^[a-z]+:/, ''));
+        const ln = e.line ? `<span class="ln">:${e.line}</span>` : '';
+        const code = e.text ? `<code>${esc(e.text)}</code>` : '';
+        return `<div class="imp ${dir}" data-go="${esc(e[key])}"` +
+          (e.srcPath ? ` data-src="${esc(e.srcPath)}" data-line="${e.line || 0}"` : '') +
+          `>${ln}<span class="who">${who}</span>${code}</div>`;
+      }).join('');
+  };
+  html += list('imported by', dependents, 'from', 'in');
+  html += list('imports', deps, 'to', 'out');
+  if (!DATA.exported) {
+    html += `<button class="chip" id="viewsrc" style="margin-top:14px">view source</button>`;
+  }
   panel.innerHTML = html;
   wire(panel);
+  const vs = document.getElementById('viewsrc');
+  if (vs) vs.onclick = () => showSource(x.label, 0);
 }
 
 function wire(panel) {
   for (const el of panel.querySelectorAll('[data-go]')) {
-    el.onclick = () => {
+    el.onclick = ev => {
+      // Clicking the code opens it at that line; clicking the name navigates.
+      const src = el.getAttribute('data-src');
+      if (src && ev.target.tagName === 'CODE' && !DATA.exported) {
+        showSource(src, +el.getAttribute('data-line') || 0);
+        return;
+      }
       const id = el.getAttribute('data-go');
       const t = view.index.get(id);
       goTo(id);
       if (t && t.group) expandGroup(t); else select(id);
     };
   }
+}
+
+// ── source view ─────────────────────────────────────────────────────────────
+// Served only by `cairn serve`; the exported single file has no server, and
+// falls back to the import lines already in the payload.
+const codeEl = document.getElementById('code');
+document.getElementById('codeclose').onclick = () => codeEl.classList.remove('on');
+
+async function showSource(path, line) {
+  if (!path) return;
+  document.getElementById('codepath').textContent = path;
+  const body = document.getElementById('codebody');
+  body.innerHTML = '<p class="empty" style="padding:12px 16px">loading…</p>';
+  codeEl.classList.add('on');
+
+  let text;
+  try {
+    const r = await fetch('/source?path=' + encodeURIComponent(path));
+    if (!r.ok) throw new Error(await r.text());
+    text = await r.text();
+  } catch (err) {
+    body.innerHTML = `<p class="empty" style="padding:12px 16px">could not read this file<br><br>${esc(String(err.message || err))}</p>`;
+    return;
+  }
+
+  // Every line this file imports on, so they can be marked in the margin.
+  const hits = new Set();
+  for (const e of DATA.edges) {
+    const f = byId.get(e.from);
+    if (f && f.label === path && e.line) hits.add(e.line);
+  }
+
+  const lines = text.split('\n');
+  const rows = lines.map((t, i) => {
+    const n = i + 1;
+    const cls = n === line ? 'here' : hits.has(n) ? 'hit' : '';
+    return `<tr class="${cls}" id="L${n}"><td class="n">${n}</td><td>${esc(t) || ' '}</td></tr>`;
+  }).join('');
+  body.innerHTML = `<table>${rows}</table>`;
+
+  const target = document.getElementById('L' + (line || [...hits][0] || 1));
+  if (target) target.scrollIntoView({ block: 'center' });
 }
 
 // ── boot ────────────────────────────────────────────────────────────────────

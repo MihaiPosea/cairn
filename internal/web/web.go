@@ -9,10 +9,12 @@ package web
 import (
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -53,6 +55,13 @@ type Edge struct {
 	Kind string `json:"kind"`
 	Spec string `json:"spec,omitempty"`
 	Line int    `json:"line,omitempty"`
+	// Text is the source line that created this edge.
+	//
+	// Carried in the payload rather than fetched, so the exported single file
+	// shows real code with no server. A name tells you two files are connected;
+	// the line tells you what the connection is, which is the thing someone
+	// actually wants to see.
+	Text string `json:"text,omitempty"`
 }
 
 // Payload is everything the page needs. It is embedded in the HTML, which is
@@ -69,6 +78,10 @@ type Payload struct {
 	// ExactBlast reports whether Node.Blast is the transitive figure or the
 	// cheaper direct-dependent count used on very large graphs.
 	ExactBlast bool `json:"exactBlast"`
+
+	// Exported marks a standalone file with no server behind it, so the page
+	// hides the parts that would need one.
+	Exported bool `json:"exported,omitempty"`
 }
 
 // maxNodes caps what is sent.
@@ -82,6 +95,7 @@ const maxNodes = 20000
 // Build turns a scan result into a page payload.
 func Build(res *scan.Result, includePackages bool) *Payload {
 	g := res.Graph
+	src := newSourceCache(res.Root)
 
 	var ids []string
 	for _, id := range g.IDs() {
@@ -185,6 +199,7 @@ func Build(res *scan.Result, includePackages bool) *Payload {
 			p.Edges = append(p.Edges, Edge{
 				From: e.From, To: e.To, Kind: e.Kind.String(),
 				Spec: e.Specifier, Line: e.Line,
+				Text: src.line(g.Nodes[id].Path, e.Line),
 			})
 		}
 	}
@@ -232,6 +247,7 @@ func Render(p *Payload) (string, error) {
 
 // Export writes the standalone page to a file.
 func Export(p *Payload, path string) error {
+	p.Exported = true
 	html, err := Render(p)
 	if err != nil {
 		return err
@@ -240,6 +256,10 @@ func Export(p *Payload, path string) error {
 }
 
 // Serve renders the page and serves it on addr until interrupted.
+//
+// It also serves file contents, so the page can show the code behind an edge
+// rather than only its name. The exported single file has no server and falls
+// back to the import lines carried in the payload.
 func Serve(p *Payload, addr string) error {
 	html, err := Render(p)
 	if err != nil {
@@ -247,9 +267,51 @@ func Serve(p *Payload, addr string) error {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, html)
 	})
+	mux.HandleFunc("/source", func(w http.ResponseWriter, r *http.Request) {
+		body, err := readRepoFile(p.Root, r.URL.Query().Get("path"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(body)
+	})
 	fmt.Printf("cairn is on http://%s  (ctrl-c to stop)\n", addr)
 	return http.ListenAndServe(addr, mux)
+}
+
+// readRepoFile returns a file's contents, refusing anything outside the repo.
+//
+// The path arrives from a query string, so it is attacker-controlled in the
+// only sense that matters here: a page in another tab could ask for it. The
+// resolved path is required to stay under the root, which rules out "..",
+// absolute paths, and symlinks pointing elsewhere.
+func readRepoFile(root, rel string) ([]byte, error) {
+	if rel == "" {
+		return nil, errors.New("no path")
+	}
+	full := filepath.Join(root, filepath.FromSlash(rel))
+	resolved, err := filepath.EvalSymlinks(full)
+	if err != nil {
+		return nil, errors.New("not found")
+	}
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return nil, errors.New("not found")
+	}
+	if resolved != realRoot && !strings.HasPrefix(resolved, realRoot+string(filepath.Separator)) {
+		return nil, errors.New("outside the repository")
+	}
+	fi, err := os.Stat(resolved)
+	if err != nil || fi.IsDir() || fi.Size() > maxSourceBytes {
+		return nil, errors.New("not readable")
+	}
+	return os.ReadFile(resolved)
 }
