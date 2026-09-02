@@ -325,8 +325,33 @@ let view = { boxes: [], edges: [], width: 0, height: 0, index: new Map() };
 
 function isOpen(x) { return x.group && expanded.has(x.id); }
 
+// The part of a file's directory the reader cannot already see.
+//
+// Inside an open packages/excalidraw/ every box was captioned
+// "packages/excalidraw/" — sixty repetitions of the folder heading directly
+// above them. It is the definition of information overload, and it was setting
+// the width of every column in the graph.
+function dirSuffix(x) {
+  if (!x.dir || x.group) return '';
+  for (let p = x.parent; p; ) {
+    const pb = item(p);
+    if (!pb) break;
+    if (isOpen(pb) && pb.label && x.dir.startsWith(pb.label)) return x.dir.slice(pb.label.length);
+    p = pb.parent;
+  }
+  return x.dir;
+}
+
+const MINW = 118;
+function leafWidth(x) {
+  ctx.font = '12px "Geist Mono", ui-monospace, Menlo, monospace';
+  const suffix = dirSuffix(x);
+  const w = ctx.measureText(x.base).width + (suffix ? ctx.measureText(suffix).width + 7 : 0);
+  return Math.max(MINW, Math.min(NW, Math.ceil(w) + 18));
+}
+
 function measureBox(x) {
-  if (!isOpen(x)) { x.bw = NW; x.bh = NH; return; }
+  if (!isOpen(x)) { x.bw = x.group ? NW : leafWidth(x); x.bh = NH; return; }
   const kids = childIds(x).map(item);
   for (const k of kids) measureBox(k);
   const b = packChildren(kids);
@@ -787,14 +812,15 @@ function layoutText(x) {
   const bw = ctx.measureText(label).width;
   x.textX = 9 + bw + 7;
   const room = x.bw - 9 - x.textX - (x.group ? 36 : 0);
-  if (!x.dir || room < 22 || isOpen(x)) { x.text = ''; return; }
-  if (ctx.measureText(x.dir).width <= room) { x.text = x.dir; return; }
-  let lo = 0, hi = x.dir.length;
+  const dir = dirSuffix(x);
+  if (!dir || room < 22 || isOpen(x)) { x.text = ''; return; }
+  if (ctx.measureText(dir).width <= room) { x.text = dir; return; }
+  let lo = 0, hi = dir.length;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    if (ctx.measureText('…' + x.dir.slice(mid)).width <= room) hi = mid; else lo = mid + 1;
+    if (ctx.measureText('…' + dir.slice(mid)).width <= room) hi = mid; else lo = mid + 1;
   }
-  x.text = lo >= x.dir.length ? '' : '…' + x.dir.slice(lo);
+  x.text = lo >= dir.length ? '' : '…' + dir.slice(lo);
 }
 
 function drawMini() {
