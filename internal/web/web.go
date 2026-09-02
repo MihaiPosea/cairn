@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/MihaiPosea/cairn/internal/graph"
+	"github.com/MihaiPosea/cairn/internal/modules"
 	"github.com/MihaiPosea/cairn/internal/query"
 	"github.com/MihaiPosea/cairn/internal/scan"
 )
@@ -82,6 +83,21 @@ type Payload struct {
 	// Exported marks a standalone file with no server behind it, so the page
 	// hides the parts that would need one.
 	Exported bool `json:"exported,omitempty"`
+
+	// Modules is the top level of the picture: the handful of parts someone
+	// would name if asked what this codebase is made of. The page opens here
+	// and scopes everything it draws to one of them at a time.
+	Modules []modules.Module `json:"modules"`
+	// ModuleOf maps a node ID to its module. Packages are included as well as
+	// files — a node missing from this map is an edge endpoint the page
+	// cannot place, and it would drop the edge without saying so.
+	ModuleOf map[string]string `json:"moduleOf"`
+	// ModuleEdges are the import relationships between modules.
+	ModuleEdges []modules.Edge `json:"moduleEdges"`
+	// ModuleCycles are modules that depend on each other in a loop. A cycle
+	// between two files is often deliberate; one between two modules means
+	// the boundary is not real.
+	ModuleCycles [][]string `json:"moduleCycles,omitempty"`
 }
 
 // maxNodes caps what is sent.
@@ -219,6 +235,13 @@ func Build(res *scan.Result, includePackages bool) *Payload {
 		p.Stats["source"] = res.Packages.Source
 		p.Warnings = res.Packages.Warnings
 	}
+
+	// Built from the whole graph, not the possibly-truncated node list: the
+	// module map is the one view that must describe the entire repository,
+	// since it is what the reader sees first and navigates by.
+	mm := modules.Build(res)
+	p.Modules, p.ModuleOf = mm.Modules, mm.Of
+	p.ModuleEdges, p.ModuleCycles = mm.Edges, mm.Cycles
 	return p
 }
 

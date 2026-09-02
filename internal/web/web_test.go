@@ -154,3 +154,42 @@ func TestDepthsAreConsecutiveRanks(t *testing.T) {
 		t.Errorf("max depth %d with only %d distinct levels — depths are not ranks", maxDepth, len(seen))
 	}
 }
+
+// The page scopes everything it draws by module. An edge endpoint missing from
+// ModuleOf resolves to nothing, and the page drops that edge without saying
+// so — which is the failure the whole module layer exists to prevent.
+func TestEveryDrawnNodeHasAModule(t *testing.T) {
+	res := build(t, map[string]string{
+		"packages/ui/index.ts":   `import "../core/index"; export const a = 1;`,
+		"packages/core/index.ts": `export const b = 1;`,
+		"app/main.ts":            `import "../packages/ui/index";`,
+	})
+	p := Build(res, false)
+
+	known := map[string]bool{}
+	for _, m := range p.Modules {
+		known[m.ID] = true
+	}
+	for _, n := range p.Nodes {
+		mid, ok := p.ModuleOf[n.ID]
+		if !ok {
+			t.Errorf("node %s is drawn but belongs to no module", n.ID)
+			continue
+		}
+		if !known[mid] {
+			t.Errorf("node %s maps to module %q, which is not in Modules", n.ID, mid)
+		}
+	}
+	// Edge conservation: every drawn edge must be placeable.
+	for _, e := range p.Edges {
+		if _, ok := p.ModuleOf[e.From]; !ok {
+			t.Errorf("edge from %s cannot be placed in a module", e.From)
+		}
+		if _, ok := p.ModuleOf[e.To]; !ok {
+			t.Errorf("edge to %s cannot be placed in a module", e.To)
+		}
+	}
+	if len(p.Modules) == 0 {
+		t.Error("expected modules in the payload")
+	}
+}
