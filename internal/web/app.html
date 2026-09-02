@@ -857,8 +857,12 @@ function render() {
   // of everything so it is never occluded.
   drawWells(x0, y0, x1, y1);
   if (s > 0.2 || selected) drawEdges(x0, y0, x1, y1, s > 0.28);
-  drawBoxes(x0, y0, x1, y1);
+  // Under the boxes, not over them. Edges were moved on top when folders were
+  // drawn as containers, because a line into an open folder vanished at its
+  // border. Nothing nests any more, so the only thing painting last achieves
+  // is drawing lines across the labels — which is what it was doing.
   if (selected) drawChain(s > 0.28);
+  drawBoxes(x0, y0, x1, y1);
   drawLayerHeads();
   drawDenseNote();
   ctx.restore();
@@ -1009,14 +1013,15 @@ function drawChain(curved) {
     for (const [a, b] of near) edgePath(a, b, curved);
     ctx.stroke();
     ctx.fillStyle = col;
-    for (const [a, b] of near) arrowHead(b);
+    for (const [a, b] of near) arrowHead(a, b);
   }
 }
 
 // A small triangle just outside the target's left edge.
-function arrowHead(b) {
-  const [x, y] = anchor(b).l;
-  const h = 5 / s, w = 7 / s;
+function arrowHead(a, b) {
+  const e = edgeEnds(a, b);
+  const [x, y] = e.to;
+  const h = 5 / s, w = (7 / s) * e.dir;
   ctx.beginPath();
   ctx.moveTo(x, y);
   ctx.lineTo(x - w, y - h);
@@ -1025,11 +1030,51 @@ function arrowHead(b) {
   ctx.fill();
 }
 
+// Which side of each box an edge leaves and arrives on.
+//
+// This used to be right-to-left always. Most edges run left to right, so most
+// of the time that was correct — but an edge pointing backwards then started
+// at the far right of the canvas and swept all the way left, crossing every
+// box and every label in between to reach a target that was sitting a few
+// pixels away. Backward edges leave the left side and arrive on the right,
+// which makes them short.
+function edgeEnds(a, b) {
+  const A = anchor(a), B = anchor(b);
+  const ac = a.x + a.bw / 2, bc = b.x + b.bw / 2;
+
+  // Two boxes in the same column. This is not a corner case: modules that
+  // depend on each other cannot be ordered, so they all rank the same and land
+  // in one column — excalidraw's common, element, excalidraw and math are a
+  // four-way cycle sitting side by side. Treating them as a normal edge sent
+  // every line out of one box's right edge and back in through another's left,
+  // across all four labels.
+  //
+  // They leave and arrive on the same side and bow outward, the way a sibling
+  // connector is drawn, so the line stays clear of every box.
+  if (Math.abs(ac - bc) < Math.max(a.bw, b.bw) * 0.5) {
+    return { from: A.r, to: B.r, dir: -1, side: true };
+  }
+
+  const back = bc < ac;
+  return back ? { from: A.l, to: B.r, dir: -1 } : { from: A.r, to: B.l, dir: 1 };
+}
+
 function edgePath(a, b, curved) {
-  const [ax, ay] = anchor(a).r, [bx, by] = anchor(b).l;
+  const e = edgeEnds(a, b);
+  const [ax, ay] = e.from, [bx, by] = e.to;
   ctx.moveTo(ax, ay);
-  if (curved) { const mx = (ax + bx) / 2; ctx.bezierCurveTo(mx, ay, mx, by, bx, by); }
-  else ctx.lineTo(bx, by);
+  if (e.side) {
+    // Out to the right and back, clearing the column. How far out is set by
+    // how far apart the two boxes are vertically, so parallel sibling edges
+    // nest instead of overlapping.
+    const bow = Math.max(28 / s, Math.abs(by - ay) * 0.55);
+    ctx.bezierCurveTo(ax + bow, ay, bx + bow, by, bx, by);
+  } else if (curved) {
+    // Bow the control points out past the ends so a backward edge reads as a
+    // returning curve rather than a straight line laid over the boxes.
+    const span = Math.max(Math.abs(bx - ax) * 0.5, 26 / s);
+    ctx.bezierCurveTo(ax + e.dir * span, ay, bx - e.dir * span, by, bx, by);
+  } else ctx.lineTo(bx, by);
 }
 
 // The recessed background of every open container, drawn before any edge.
@@ -1060,7 +1105,7 @@ function drawBoxes(x0, y0, x1, y1) {
     const open = isOpen(x);
     // The well is already painted; a container only needs its frame and label.
     const dim = (selected && !hotSet.has(x.id) && !open) ||
-                (filter && !x.label.toLowerCase().includes(filter) && !open);
+                (filter && !x.label.toLowerCase().includes(filter));
     ctx.globalAlpha = dim ? 0.12 : 1;
     const isSel = x.id === selected, isHover = x.id === hovered;
 
@@ -1650,7 +1695,7 @@ async function showSource(path, line) {
 // how many.
 document.getElementById('hint').textContent = DATA.truncated
   ? `${DATA.truncated} nodes not sent · f fit · c reset`
-  : 'click a folder to go in · breadcrumb to come back · f fit';
+  : 'click for details · double-click a folder to go in · / to search';
 
 // Light by default, matching the site; the choice sticks per browser.
 function setTheme(t) {
@@ -1753,11 +1798,101 @@ function renderReport() {
 
 function showTab(which) {
   document.body.classList.toggle('report', which === 'report');
-  for (const t of document.querySelectorAll('.tab')) {
+  // ── search ──────────────────────────────────────────────────────────────────
+//
+// The box in the header had never been wired to anything. It set a variable
+// that dimmed non-matching boxes and no handler ever assigned it, so the one
+// control that looks like it should answer "where is this file" did nothing
+// at all.
+//
+// Scoping makes it matter more than it used to: a file is only on screen when
+// the reader is standing in its directory, and finding it by clicking down
+// four levels is not finding it. Typing a name searches every file in the
+// repository and going to one takes you to where it lives.
+const qEl = document.getElementById('q');
+let hits = [];
+
+function runSearch() {
+  filter = qEl.value.trim().toLowerCase();
+  if (!filter) { hits = []; renderPanel(selected ? view.index.get(selected) : null); draw(); return; }
+
+  hits = files
+    .filter(n => n.label.toLowerCase().includes(filter))
+    .sort((a, b) => b.blast - a.blast)
+    .slice(0, 40);
+
+  const panel = document.getElementById('panel');
+  panel.innerHTML =
+    `<div class="kind">search</div><h2>${esc(qEl.value.trim())}</h2>` +
+    `<div class="dir">${hits.length}${hits.length === 40 ? '+' : ''} of ${files.length} files</div>` +
+    (hits.length
+      ? `<h3>go to</h3><ul>` + hits.map(n =>
+          `<li data-go="${esc(n.id)}"><span class="d">${esc(n.dir)}</span>${esc(n.base)}` +
+          `<span class="d"> ${n.blast}</span></li>`).join('') + `</ul>`
+      : `<p class="empty">Nothing matches.</p>`);
+  wire(panel);
+  draw();
+}
+
+qEl.addEventListener('input', runSearch);
+qEl.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { qEl.value = ''; runSearch(); qEl.blur(); }
+  if (e.key === 'Enter' && hits.length) { navigateTo(hits[0].id); }
+});
+addEventListener('keydown', e => {
+  if (e.key === '/' && document.activeElement !== qEl) { e.preventDefault(); qEl.focus(); }
+});
+
+for (const t of document.querySelectorAll('.tab')) {
     t.classList.toggle('on', t.getAttribute('data-tab') === which);
   }
   if (which === 'graph') { resize(); draw(); }
 }
+
+// ── search ──────────────────────────────────────────────────────────────────
+//
+// The box in the header had never been wired to anything. It set a variable
+// that dimmed non-matching boxes and no handler ever assigned it, so the one
+// control that looks like it should answer "where is this file" did nothing
+// at all.
+//
+// Scoping makes it matter more than it used to: a file is only on screen when
+// the reader is standing in its directory, and finding it by clicking down
+// four levels is not finding it. Typing a name searches every file in the
+// repository and going to one takes you to where it lives.
+const qEl = document.getElementById('q');
+let hits = [];
+
+function runSearch() {
+  filter = qEl.value.trim().toLowerCase();
+  if (!filter) { hits = []; renderPanel(selected ? view.index.get(selected) : null); draw(); return; }
+
+  hits = files
+    .filter(n => n.label.toLowerCase().includes(filter))
+    .sort((a, b) => b.blast - a.blast)
+    .slice(0, 40);
+
+  const panel = document.getElementById('panel');
+  panel.innerHTML =
+    `<div class="kind">search</div><h2>${esc(qEl.value.trim())}</h2>` +
+    `<div class="dir">${hits.length}${hits.length === 40 ? '+' : ''} of ${files.length} files</div>` +
+    (hits.length
+      ? `<h3>go to</h3><ul>` + hits.map(n =>
+          `<li data-go="${esc(n.id)}"><span class="d">${esc(n.dir)}</span>${esc(n.base)}` +
+          `<span class="d"> ${n.blast}</span></li>`).join('') + `</ul>`
+      : `<p class="empty">Nothing matches.</p>`);
+  wire(panel);
+  draw();
+}
+
+qEl.addEventListener('input', runSearch);
+qEl.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { qEl.value = ''; runSearch(); qEl.blur(); }
+  if (e.key === 'Enter' && hits.length) { navigateTo(hits[0].id); }
+});
+addEventListener('keydown', e => {
+  if (e.key === '/' && document.activeElement !== qEl) { e.preventDefault(); qEl.focus(); }
+});
 
 for (const t of document.querySelectorAll('.tab')) {
   t.onclick = () => showTab(t.getAttribute('data-tab'));
