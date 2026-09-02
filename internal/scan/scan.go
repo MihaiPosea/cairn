@@ -60,6 +60,13 @@ type Result struct {
 	// output. This is the tool's honesty metric and is printed on every scan.
 	Unresolved []Unresolvable
 
+	// FromBuildOutput counts imports that named a compiled file which does not
+	// exist and were resolved to the source it is built from.
+	//
+	// Reported rather than left silent: the edge is real and the source is the
+	// more useful endpoint, but the reader should know the repo is unbuilt.
+	FromBuildOutput int
+
 	// CaseMismatches are imports whose spelling differs from the file on disk.
 	//
 	// These work on macOS and Windows and fail on Linux, so they are usually
@@ -368,6 +375,9 @@ func addImport(res *Result, r *resolve.Resolver, fromFile string, imp lang.RawIm
 		res.ResolvedVia[out.Via]++
 	}
 
+	if out.FromBuildOutput {
+		res.FromBuildOutput++
+	}
 	if out.CaseMismatch != "" {
 		res.CaseMismatches = append(res.CaseMismatches, Unresolvable{
 			File: fromFile, Specifier: imp.Specifier, Line: imp.Line, Kind: imp.Kind,

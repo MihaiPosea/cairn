@@ -68,6 +68,9 @@ type Result struct {
 	// Platform is set when the import resolved through a platform-qualified
 	// file such as Button.ios.tsx, naming which variant was chosen.
 	Platform string
+	// FromBuildOutput is true when the import named a compiled file that does
+	// not exist and was resolved to the source it is built from.
+	FromBuildOutput bool
 	// CaseMismatch holds the specifier's casing when it differs from the file
 	// actually on disk.
 	//
@@ -83,6 +86,31 @@ type Result struct {
 // Order matters: TypeScript before JavaScript, because a repo mid-migration
 // often has both utils.ts and a stale utils.js, and the compiler prefers .ts.
 var extensionLadder = []string{".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".json"}
+
+// buildToSource maps a build-output directory name onto the source directories
+// it is usually compiled from.
+//
+// A monorepo package routinely imports its own compiled output —
+// "../../../dist/core/errors/index.js" — which does not exist until the repo is
+// built. In the Astro repo that was 917 imports, 98% of everything unresolved.
+//
+// The compiled file is a build of a source file that *is* present, and for a
+// dependency graph the source is the better answer: it is the file someone can
+// open, and the edge is the same edge. So when a path lands in a build
+// directory that has nothing in it, the source twin is tried.
+//
+// Only attempted after the real path fails, so an actually-built repo always
+// resolves to its real output.
+var buildToSource = map[string][]string{
+	"dist":  {"src", "source", "lib"},
+	"build": {"src", "source"},
+	"lib":   {"src", "source"},
+	"es":    {"src", "source"},
+	"esm":   {"src", "source"},
+	"cjs":   {"src", "source"},
+	"out":   {"src", "source"},
+	"types": {"src", "source"},
+}
 
 // platformSuffixes are the qualifiers bundlers try before the plain filename.
 //
@@ -478,6 +506,90 @@ func (r *Resolver) tryFile(abs string) (Result, bool) {
 	}
 
 	// Directory import: ./components -> ./components/index.ts
+	for _, ext := range extensionLadder {
+		if res, ok := r.file(filepath.Join(abs, "index"+ext)); ok {
+			return res, true
+		}
+	}
+
+	// Last resort: the path points into an unbuilt output directory. Look for
+	// the source file it would be compiled from.
+	if res, ok := r.trySourceTwin(abs); ok {
+		return res, true
+	}
+	return Result{}, false
+}
+
+// trySourceTwin rewrites a build-output path to its source equivalent.
+//
+//	packages/astro/dist/core/errors/index.js
+//	packages/astro/src/core/errors/index.ts
+//
+// Segments are tried outermost first. Anchoring on the *nearest* build
+// directory seems more natural and is wrong: "dist/types/public/common.js"
+// contains two names from the table, and rewriting the inner one produces
+// "dist/src/public/common.js" — nonsense. The outer one gives
+// "src/types/public/common.ts", which is the real file. That mistake accounted
+// for 92 of Astro's remaining unresolved imports.
+//
+// Rewriting is only ever attempted after the literal path has failed, so a repo
+// that has actually been built always resolves to its real output.
+func (r *Resolver) trySourceTwin(abs string) (Result, bool) {
+	rel, err := filepath.Rel(r.root, abs)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return Result{}, false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+
+	for i := 0; i < len(parts)-1; i++ { // never rewrite the filename itself
+		sources, ok := buildToSource[parts[i]]
+		if !ok {
+			continue
+		}
+		for _, src := range sources {
+			swapped := append(append([]string{}, parts[:i]...), src)
+			swapped = append(swapped, parts[i+1:]...)
+			candidate := filepath.Join(r.root, filepath.Join(swapped...))
+
+			// Reuse the ordinary rules on the rewritten path so the extension
+			// ladder and the .js -> .ts mapping both still apply.
+			if res, ok := r.tryFileNoTwin(candidate); ok {
+				res.FromBuildOutput = true
+				return res, true
+			}
+		}
+		// Also try dropping the build directory entirely: some packages compile
+		// "src/x.ts" to "dist/x.js" and others to "dist/src/x.js".
+		dropped := append(append([]string{}, parts[:i]...), parts[i+1:]...)
+		if res, ok := r.tryFileNoTwin(filepath.Join(r.root, filepath.Join(dropped...))); ok {
+			res.FromBuildOutput = true
+			return res, true
+		}
+	}
+	return Result{}, false
+}
+
+// tryFileNoTwin is tryFile without the source-twin step, so the rewrite cannot
+// recurse.
+func (r *Resolver) tryFileNoTwin(abs string) (Result, bool) {
+	if ext := filepath.Ext(abs); ext != "" {
+		if res, ok := r.file(abs); ok {
+			return res, true
+		}
+		if swaps, ok := jsToTS[ext]; ok {
+			stem := strings.TrimSuffix(abs, ext)
+			for _, alt := range swaps {
+				if res, ok := r.file(stem + alt); ok {
+					return res, true
+				}
+			}
+		}
+	}
+	for _, ext := range extensionLadder {
+		if res, ok := r.file(abs + ext); ok {
+			return res, true
+		}
+	}
 	for _, ext := range extensionLadder {
 		if res, ok := r.file(filepath.Join(abs, "index"+ext)); ok {
 			return res, true

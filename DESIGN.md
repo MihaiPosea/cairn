@@ -586,3 +586,39 @@ in the TanStack Query repo.
 
 75,680 imports across nine repositories. The two high numbers are true findings about an unbuilt
 checkout, not failures — and the tool now says which, in one line.
+
+---
+
+## Imports of unbuilt output
+
+A monorepo package routinely imports its own compiled output —
+`../../../dist/core/errors/index.js` — which does not exist until the repo is built. In the Astro
+repo that was 917 imports, 98% of everything unresolved, and the first instinct was to call it
+unfixable: cairn does not run builds, and never should.
+
+But the compiled file is a build of a source file that *is* present, and for a dependency graph the
+source is the better endpoint — it is the same edge, and it is a file someone can open. So when a
+path lands in a build directory with nothing in it, the source twin is tried:
+
+```
+packages/astro/dist/cli/check/index.js  →  packages/astro/src/cli/check/index.ts
+```
+
+Only ever after the literal path fails, so a repo that *has* been built resolves to its real output.
+
+**Astro went from 8.05% unresolved to 0.15%.**
+
+**Anchoring on the nearest build directory is wrong**, which cost 92 imports to notice.
+`dist/types/public/common.js` contains two names from the table, and rewriting the inner one gives
+`dist/src/public/common.js` — nonsense. Rewriting the outer one gives `src/types/public/common.ts`,
+the real file. Outermost first.
+
+### What genuinely cannot be resolved
+
+shadcn/ui's 4,623 remain, and should. Its `@/styles/base-nova/*` imports name files the registry
+produces during a build; `apps/v4/styles/` contains a README and nothing else. There is no source
+twin because there is no source — resolving them would mean running the repo's build, which means
+executing a stranger's code, which is not a trade this tool makes.
+
+That is the honest line between the two: **a compiled file has a source you can find; a generated
+file does not exist yet.** cairn resolves the first and reports the second.

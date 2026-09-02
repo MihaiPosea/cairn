@@ -41,17 +41,18 @@ Not fixtures — actual open-source projects, cloned and scanned:
 | repo | files | imports | unresolved |
 |---|---|---|---|
 | excalidraw | 668 | 4,692 | **0.00%** |
+| astro | 4,615 | 11,614 | 0.15% |
 | nx | 5,440 | 21,120 | 0.25% |
-| tanstack-query | 1,230 | 4,458 | 0.36% |
-| turborepo | 1,284 | 3,255 | 1.20% |
-| svelte | 8,060 | 7,725 | 1.27% |
+| tanstack-query | 1,230 | 4,458 | 0.34% |
+| turborepo | 1,284 | 3,255 | 1.01% |
+| svelte | 8,060 | 7,725 | 1.24% |
 | vue-core | 538 | 2,153 | 2.14% |
 | create-t3-app | 240 | 768 | 2.60% |
-| astro | 4,615 | 11,614 | 8.05%\* |
 | shadcn/ui | 3,947 | 19,895 | 23.24%\* |
 
-\* Those two are *true findings*, not failures. astro's point into `dist/`, which does not exist in an
-unbuilt clone; shadcn's are files its build generates. cairn says which, in one line:
+\* shadcn is a *true finding*, not a failure: those imports name files its registry generates during
+a build, and they exist nowhere in a fresh clone. cairn says so in one line rather than printing
+4,623 identical errors:
 
 ```
 4618 of 4623 (100%) have the same cause: alias or generated path that does

@@ -248,3 +248,54 @@ func TestUnexplainedHashSpecifierStaysVirtual(t *testing.T) {
 		t.Errorf("got %v, want virtual when no manifest declares it", got.Kind)
 	}
 }
+
+// A repo that has not been built imports its own compiled output. The source
+// twin is the same edge and an openable file, so it is the better answer.
+func TestUnbuiltOutputResolvesToSource(t *testing.T) {
+	root := hrepo(t, map[string]string{
+		"packages/astro/src/core/errors/index.ts": "",
+		"packages/astro/src/cli/check/index.ts":   "",
+		"packages/astro/components/Code.astro":    "",
+		"packages/astro/src/thing.tsx":            "",
+	})
+	r := resolver(t, root)
+
+	for _, tc := range []struct{ from, spec, want string }{
+		{"packages/astro/components/Code.astro", "../dist/core/errors/index.js", "packages/astro/src/core/errors/index.ts"},
+		{"packages/astro/components/Code.astro", "../dist/cli/check/index.js", "packages/astro/src/cli/check/index.ts"},
+		{"packages/astro/components/Code.astro", "../dist/thing.js", "packages/astro/src/thing.tsx"},
+	} {
+		got := r.Resolve(tc.from, tc.spec)
+		if got.Kind != ToFile || got.Path != tc.want {
+			t.Errorf("Resolve(%q) = %v %q (%s), want %q", tc.spec, got.Kind, got.Path, got.Reason, tc.want)
+		}
+		if !got.FromBuildOutput {
+			t.Errorf("Resolve(%q) should be flagged as coming from a build output", tc.spec)
+		}
+	}
+}
+
+// A repo that HAS been built must resolve to the real output, not the source.
+func TestBuiltOutputWinsOverSource(t *testing.T) {
+	root := hrepo(t, map[string]string{
+		"a.ts":            "",
+		"dist/thing.js":   "// compiled",
+		"src/thing.ts":    "// source",
+	})
+	got := resolver(t, root).Resolve("a.ts", "./dist/thing.js")
+	if got.Path != "dist/thing.js" {
+		t.Errorf("got %q, want the real built file dist/thing.js", got.Path)
+	}
+	if got.FromBuildOutput {
+		t.Error("a real build output must not be flagged as a source twin")
+	}
+}
+
+// The rewrite must not invent a file when no twin exists.
+func TestNoSourceTwinStaysUnresolved(t *testing.T) {
+	root := hrepo(t, map[string]string{"a.ts": "", "src/other.ts": ""})
+	got := resolver(t, root).Resolve("a.ts", "./dist/missing.js")
+	if got.Kind != Unresolved {
+		t.Errorf("got %v %q, want unresolved — there is no src/missing", got.Kind, got.Path)
+	}
+}

@@ -16,21 +16,22 @@ import (
 // ── scan ────────────────────────────────────────────────────────────────────
 
 type summaryOut struct {
-	Root           string  `json:"root"`
-	FilesScanned   int     `json:"files_scanned"`
-	FileNodes      int     `json:"file_nodes"`
-	Imports        int     `json:"imports"`
-	FileEdges      int     `json:"file_edges"`
-	Packages       int     `json:"packages"`
-	Builtins       int     `json:"builtins"`
-	Unresolved     int     `json:"unresolved"`
-	UnresolvedRate float64 `json:"unresolved_rate"`
-	Unanalyzable   int     `json:"unanalyzable"`
-	ParseFailures  int     `json:"parse_failures"`
-	AliasesLoaded  bool    `json:"tsconfig_aliases_loaded"`
-	CacheHits      int     `json:"cache_hits"`
-	CacheMisses    int     `json:"cache_misses"`
-	CaseMismatches int     `json:"case_mismatches"`
+	Root            string  `json:"root"`
+	FilesScanned    int     `json:"files_scanned"`
+	FileNodes       int     `json:"file_nodes"`
+	Imports         int     `json:"imports"`
+	FileEdges       int     `json:"file_edges"`
+	Packages        int     `json:"packages"`
+	Builtins        int     `json:"builtins"`
+	Unresolved      int     `json:"unresolved"`
+	UnresolvedRate  float64 `json:"unresolved_rate"`
+	Unanalyzable    int     `json:"unanalyzable"`
+	ParseFailures   int     `json:"parse_failures"`
+	AliasesLoaded   bool    `json:"tsconfig_aliases_loaded"`
+	CacheHits       int     `json:"cache_hits"`
+	CacheMisses     int     `json:"cache_misses"`
+	CaseMismatches  int     `json:"case_mismatches"`
+	FromBuildOutput int     `json:"from_build_output"`
 
 	PackageSource       string   `json:"package_source,omitempty"`
 	Declared            int      `json:"declared,omitempty"`
@@ -54,21 +55,22 @@ type unresolvedOut struct {
 func summary(res *scan.Result) summaryOut {
 	s := res.Graph.Stats()
 	out := summaryOut{
-		Root:           res.Root,
-		FilesScanned:   res.FilesScanned,
-		FileNodes:      s[graph.File],
-		Imports:        res.ImportsFound,
-		FileEdges:      res.Graph.EdgeCount(graph.File),
-		Packages:       s[graph.Package],
-		Builtins:       s[graph.Builtin],
-		Unresolved:     len(res.Unresolved),
-		UnresolvedRate: res.UnresolvedRate(),
-		Unanalyzable:   len(res.Unanalyzable),
-		ParseFailures:  len(res.ParseFailures),
-		AliasesLoaded:  res.AliasesLoaded,
-		CacheHits:      res.CacheHits,
-		CacheMisses:    res.CacheMisses,
-		CaseMismatches: len(res.CaseMismatches),
+		Root:            res.Root,
+		FilesScanned:    res.FilesScanned,
+		FileNodes:       s[graph.File],
+		Imports:         res.ImportsFound,
+		FileEdges:       res.Graph.EdgeCount(graph.File),
+		Packages:        s[graph.Package],
+		Builtins:        s[graph.Builtin],
+		Unresolved:      len(res.Unresolved),
+		UnresolvedRate:  res.UnresolvedRate(),
+		Unanalyzable:    len(res.Unanalyzable),
+		ParseFailures:   len(res.ParseFailures),
+		AliasesLoaded:   res.AliasesLoaded,
+		CacheHits:       res.CacheHits,
+		CacheMisses:     res.CacheMisses,
+		CaseMismatches:  len(res.CaseMismatches),
+		FromBuildOutput: res.FromBuildOutput,
 	}
 	if res.Packages != nil {
 		out.PackageSource = res.Packages.Source
@@ -130,6 +132,12 @@ func printSummary(res *scan.Result) {
 			fmt.Printf("\n      %s\n", s)
 		}
 		fmt.Println("      run with --json for the full list")
+	}
+
+	if n := res.FromBuildOutput; n > 0 {
+		fmt.Printf("\n  %-22s %d\n", "unbuilt output", n)
+		fmt.Println("      imports name compiled files that do not exist yet; resolved to the")
+		fmt.Println("      source they are built from, which is the same edge and an openable file")
 	}
 
 	if n := len(res.CaseMismatches); n > 0 {
