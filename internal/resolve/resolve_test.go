@@ -3,6 +3,8 @@ package resolve
 import (
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 )
 
@@ -117,8 +119,8 @@ func TestLongestAliasPrefixWins(t *testing.T) {
 			"@/*": ["./src/*"],
 			"@/lib/*": ["./vendor/lib/*"]
 		}}}`,
-		"a.ts":              "",
-		"src/lib/thing.ts":  "",
+		"a.ts":                "",
+		"src/lib/thing.ts":    "",
 		"vendor/lib/thing.ts": "",
 	})
 	got := resolver(t, root).Resolve("a.ts", "@/lib/thing")
@@ -183,9 +185,9 @@ func TestMissingRelativeFileExplainsItself(t *testing.T) {
 // A directory must not satisfy an import that a real file could satisfy.
 func TestDirectoryDoesNotShadowAFile(t *testing.T) {
 	root := repo(t, map[string]string{
-		"a.ts":            "",
-		"utils.ts":        "",
-		"utils/keep.txt":  "",
+		"a.ts":           "",
+		"utils.ts":       "",
+		"utils/keep.txt": "",
 	})
 	got := resolver(t, root).Resolve("a.ts", "./utils")
 	if got.Path != "utils.ts" {
@@ -199,4 +201,92 @@ func TestNonCodeExtensionsResolve(t *testing.T) {
 	if got.Kind != ToFile || got.Path != "styles/globals.css" {
 		t.Errorf("got %v %q, want styles/globals.css", got.Kind, got.Path)
 	}
+}
+
+// A workspace import must land on the package's code, never on its manifest.
+//
+// Almost every modern package publishes "./package.json": "./package.json" in
+// its exports, and the old reader treated that as just another key to fall
+// back to. Because Go randomises map iteration it won a coin flip: measured on
+// tanstack-query, 319 edges — a twelfth of the graph — pointed at
+// package.json on one run and at src/index.ts on the next, for an unchanged
+// repository.
+func TestWorkspaceExportsNeverResolveToTheManifest(t *testing.T) {
+	root := repo(t, map[string]string{
+		"package.json": `{"name":"root","workspaces":["packages/*"]}`,
+		"packages/ui/package.json": `{
+			"name": "@acme/ui",
+			"exports": {
+				".": { "source": "./src/index.ts" },
+				"./package.json": "./package.json"
+			}
+		}`,
+		"packages/ui/src/index.ts": `export const ui = 1;`,
+		"app/main.ts":              `import { ui } from "@acme/ui";`,
+	})
+
+	// Ten runs: one coin flip landing right proves nothing.
+	for i := range 10 {
+		r, err := New(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := r.Resolve("app/main.ts", "@acme/ui")
+		if got.Kind != ToFile {
+			t.Fatalf("run %d: @acme/ui did not resolve to a file: %+v", i, got)
+		}
+		if strings.HasSuffix(got.Path, "package.json") {
+			t.Fatalf("run %d: resolved to the manifest %q instead of the package's code", i, got.Path)
+		}
+		if got.Path != "packages/ui/src/index.ts" {
+			t.Fatalf("run %d: resolved to %q, want packages/ui/src/index.ts", i, got.Path)
+		}
+	}
+}
+
+// The same specifier must resolve the same way every time, or every number
+// built on the graph moves on its own.
+func TestExportsResolutionIsDeterministic(t *testing.T) {
+	root := repo(t, map[string]string{
+		"package.json": `{"name":"root","workspaces":["packages/*"]}`,
+		// No preferred condition anywhere: the old code fell through to
+		// ranging over the map, which is where the randomness got in.
+		"packages/x/package.json": `{
+			"name": "@acme/x",
+			"exports": {
+				".": {
+					"@acme/custom-condition": "./src/index.ts",
+					"browser": "./src/browser.ts",
+					"node": "./src/node.ts"
+				},
+				"./package.json": "./package.json"
+			}
+		}`,
+		"packages/x/src/index.ts":   `export const a = 1;`,
+		"packages/x/src/browser.ts": `export const b = 1;`,
+		"packages/x/src/node.ts":    `export const c = 1;`,
+		"app/main.ts":               `import "@acme/x";`,
+	})
+
+	seen := map[string]bool{}
+	for range 12 {
+		r, err := New(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := r.Resolve("app/main.ts", "@acme/x")
+		seen[got.Path] = true
+	}
+	if len(seen) != 1 {
+		t.Errorf("twelve runs produced %d different answers: %v", len(seen), keysOfSet(seen))
+	}
+}
+
+func keysOfSet(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

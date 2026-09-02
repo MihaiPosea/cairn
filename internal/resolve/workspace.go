@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -136,6 +137,23 @@ func readWorkspace(dir string) *Workspace {
 }
 
 // exportsSource digs the first string out of an exports map.
+// exportsSource picks the source file an "exports" map points at.
+//
+// Two things make this delicate, and getting either wrong is silent.
+//
+// The map has two shapes at different depths. The outer one is keyed by
+// subpath — ".", "./styles", "./package.json" — and only "." is the package's
+// main entry. The inner ones are keyed by condition — "import", "require",
+// "types". Treating a subpath map as a condition map is how a package ends up
+// resolving to its own package.json, since almost every modern manifest
+// publishes "./package.json": "./package.json" and it is just another key.
+//
+// And the fallback must not iterate a Go map. Map order is randomised per run,
+// so a manifest whose keys miss the preferred list resolves differently on
+// different runs of the same scan. Measured on tanstack-query: 319 edges — a
+// twelfth of the graph — flipped between two runs of an unchanged repository,
+// every one of them a workspace import landing on package.json half the time
+// and on src/index.ts the other half.
 func exportsSource(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
@@ -144,14 +162,28 @@ func exportsSource(raw json.RawMessage) string {
 	if json.Unmarshal(raw, &v) != nil {
 		return ""
 	}
-	// Prefer keys that name source over keys that name builds.
-	preferred := []string{"source", "development", "import", "default", "require"}
+
+	// Conditions, in the order a source-first reader wants them.
+	preferred := []string{"source", "development", "import", "module", "default", "require"}
+
 	var pick func(any) string
 	pick = func(x any) string {
 		switch t := x.(type) {
 		case string:
+			if strings.HasSuffix(t, "package.json") {
+				return "" // the manifest is not the package's code
+			}
 			return t
+
 		case map[string]any:
+			// A subpath map: only "." is the main entry. The others address
+			// other files entirely and none of them substitute for it.
+			if isSubpathMap(t) {
+				if main, ok := t["."]; ok {
+					return pick(main)
+				}
+				return ""
+			}
 			for _, k := range preferred {
 				if sub, ok := t[k]; ok {
 					if s := pick(sub); s != "" {
@@ -159,11 +191,18 @@ func exportsSource(raw json.RawMessage) string {
 					}
 				}
 			}
-			for _, sub := range t {
-				if s := pick(sub); s != "" {
+			// Sorted, never range order: two runs must agree.
+			keys := make([]string, 0, len(t))
+			for k := range t {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				if s := pick(t[k]); s != "" {
 					return s
 				}
 			}
+
 		case []any:
 			for _, sub := range t {
 				if s := pick(sub); s != "" {
@@ -174,4 +213,16 @@ func exportsSource(raw json.RawMessage) string {
 		return ""
 	}
 	return pick(v)
+}
+
+// isSubpathMap reports whether an exports object is keyed by subpath rather
+// than by condition. Subpath keys are "." or begin with "./"; condition keys
+// never do.
+func isSubpathMap(m map[string]any) bool {
+	for k := range m {
+		if k == "." || strings.HasPrefix(k, "./") {
+			return true
+		}
+	}
+	return false
 }
