@@ -281,7 +281,6 @@
 </main>
 <div id="report"><div class="rp" id="rpbody"></div></div>
 <div class="legend">
-  <span><i class="sw entry"></i>entry point</span>
   <span><i class="sw"></i>file</span>
   <span><i class="sw pkg"></i>package</span>
   <span><i class="sw dead"></i>nothing reaches it</span>
@@ -1189,20 +1188,11 @@ function drawBoxes(x0, y0, x1, y1) {
       ctx.stroke();
     }
 
-    // A short accent rule on the leading edge: present when you look for it,
-    // silent when you are not.
-    if (x.entry && !open) {
-      ctx.fillStyle = C.accent;
-      ctx.beginPath();
-      ctx.roundRect(x.x + 1.5, x.y + 5, 2.5, x.bh - 10, 2);
-      ctx.fill();
-    }
-
     if (showText) {
       if (x.text === undefined) layoutText(x);
       const cy = x.y + (open ? HEADER : x.bh) / 2;
       ctx.fillStyle = open ? C.inkSoft : C.ink;
-      ctx.fillText(open ? '▾ ' + x.base : x.base, x.x + (x.entry && !open ? 12 : 9), cy);
+      ctx.fillText(open ? '▾ ' + x.base : x.base, x.x + 9, cy);
       if (x.group) {
         ctx.fillStyle = C.inkFaint;
         const c = String(x.count);
