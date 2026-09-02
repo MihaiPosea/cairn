@@ -3,46 +3,51 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Alike&display=swap">
 <title>cairn - {{.Root}}</title>
 <style>
-  /* Palette lifted from mihaiposea.com: warm stone paper, near-black ink,
-     amber and brand blue as the only two accents. The site ships light only,
-     so the dark variant is built from its own brand tokens - brand-black
-     #0b0b0b, brand-white #f6f5f3, brand-grey #cdc7bd - rather than invented. */
+  /* Palette, type and shape taken from the weave dashboard: near-black
+     surfaces a few points apart, one white accent, 4px corners, no shadows,
+     and the system font stack at 13px. The accent being white rather than a
+     hue is the whole idea - colour is spent on data and nothing else, so the
+     seven categorical hues below are the only saturated things on screen.
+
+     Dark is the default because that design has no light mode; the light
+     variant here is its own earlier palette rather than an invention. */
   :root {
-    --paper:#fafaf8; --surface:#ffffff; --surface-2:#f0efed; --surface-3:#ececea;
-    --ink:#1c1917; --ink-2:#44403c; --ink-soft:#78716c; --ink-faint:#8a827c;
-    --rule:#e7e5e4; --rule-strong:#d6d3d1;
-    --accent:#0a17b6; --accent-soft:#e8eaf9; --accent-3:#006afe;
-    --out:#0a17b6; --in:#d97706; --in-soft:#fdf3e3;
-    --crit:#dc2626; --pkg:#57534e; --pkg-soft:#f5f5f4;
-    --edge:#d6d3d1;
-    --radius:10px; --radius-sm:6px;
-    --font-sans:"Geist","Geist Fallback",ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
-    --font-mono:"Geist Mono","Geist Mono Fallback",ui-monospace,SFMono-Regular,Menlo,monospace;
-    --font-serif:"Alike",ui-serif,Georgia,"Times New Roman",serif;
+    color-scheme:dark;
+    --paper:#080808; --surface:#101010; --surface-2:#141414; --surface-3:#191919;
+    --ink:#ededed; --ink-2:#8c8c8c; --ink-soft:#8c8c8c; --ink-faint:#5a5a5a;
+    --rule:#1d1d1d; --rule-strong:#2a2a2a;
+    --accent:#ffffff; --accent-soft:#191919; --accent-3:#bcbcbc;
+    --out:#5a7799; --in:#9d7550; --in-soft:#191919;
+    --crit:#d76b6b; --good:#5bbd8a; --pkg:#8f8352; --pkg-soft:#141414;
+    --edge:#2a2a2a;
+    --radius:4px; --radius-sm:3px;
+    --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+    --font-serif:var(--font-sans);
   }
-  /* The site ships light only, so light is the default here too. Dark is built
-     from the same brand tokens - brand-black #0b0b0b, brand-white #f6f5f3,
-     brand-grey #cdc7bd - rather than invented, and is opt-in. */
-  :root[data-theme="dark"] {
-      --paper:#0b0b0b; --surface:#141312; --surface-2:#1c1b19; --surface-3:#232120;
-      --ink:#f6f5f3; --ink-2:#cdc7bd; --ink-soft:#9a938a; --ink-faint:#7d766e;
-      --rule:#2a2724; --rule-strong:#3a3633;
-      --accent:#7f92ff; --accent-soft:#181c33; --accent-3:#4d9bff;
-      --out:#7f92ff; --in:#e0a45c; --in-soft:#2a2115;
-      --crit:#f0736a; --pkg:#cdc7bd; --pkg-soft:#1c1b19;
-    --edge:#332f2c;
+  :root[data-theme="light"] {
+    color-scheme:light;
+    --paper:#f4f5f7; --surface:#ffffff; --surface-2:#fbfbfd; --surface-3:#f0f2f5;
+    --ink:#12151a; --ink-2:#4a5261; --ink-soft:#4a5261; --ink-faint:#7c8494;
+    --rule:#e3e6eb; --rule-strong:#cfd4dd;
+    --accent:#1f6feb; --accent-soft:#e8f0fe; --accent-3:#2563eb;
+    --out:#2563eb; --in:#ea580c; --in-soft:#fff7e6;
+    --crit:#b91c1c; --good:#12855b; --pkg:#b7791f; --pkg-soft:#fbfbfd;
+    --edge:#cfd4dd;
   }
   * { box-sizing:border-box; }
+  /* Every figure on screen is compared against another figure, so they all
+     line up. */
+  .stats b, .row span:last-child, .d, .fn, .num b, .f .fn,
+  .crumb-count, .rail-item .rn { font-variant-numeric:tabular-nums; }
+  :focus-visible { outline:1px solid #3f3f3f; outline-offset:1px; border-radius:2px; }
   html,body { height:100%; margin:0; overflow:hidden; }
   body {
     background:var(--paper); color:var(--ink);
     display:flex; flex-direction:column;
-    font:14px/1.5 var(--font-sans); -webkit-font-smoothing:antialiased;
+    font:13px/1.45 var(--font-sans); -webkit-font-smoothing:antialiased;
     letter-spacing:-0.011em;
   }
   ::selection { background:rgba(135,206,250,.35); color:#6baed6; }
@@ -53,8 +58,7 @@
     flex-shrink:0;
   }
   .brand {
-    font-family:var(--font-serif); font-size:23px; line-height:1;
-    letter-spacing:-0.05em; color:var(--ink);
+    font:620 15px/1 var(--font-sans); letter-spacing:-0.01em; color:var(--ink);
   }
   .repo {
     font:12px var(--font-mono); color:var(--ink-faint);
@@ -72,8 +76,8 @@
   #c { display:block; position:absolute; inset:0; }
   #mini {
     position:absolute; right:16px; bottom:16px; width:250px; height:158px;
-    border:1px solid var(--rule); background:var(--surface); cursor:pointer;
-    border-radius:var(--radius-sm); box-shadow:0 1px 3px rgba(28,25,23,.06);
+    border:1px solid var(--rule); background:var(--surface-2); cursor:pointer;
+    border-radius:var(--radius); color:var(--ink-2); font:12px var(--font-sans);
   }
 
   aside {
@@ -130,15 +134,14 @@
   input::placeholder { color:var(--ink-faint); }
   input:focus { outline:none; border-color:var(--accent); }
   button { cursor:pointer; }
-  button:hover { border-color:var(--accent); color:var(--accent); }
+  button:hover { border-color:var(--rule-strong); background:var(--surface-3); color:var(--ink); }
 
-  .tabs { margin-left:auto; display:flex; gap:2px; background:var(--surface-2);
-          padding:2px; border-radius:var(--radius-sm); border:1px solid var(--rule); }
-  .tab { font:12px var(--font-sans); padding:4px 13px; border:none; background:none;
-         color:var(--ink-soft); border-radius:5px; letter-spacing:-0.01em; }
-  .tab.on { background:var(--surface); color:var(--ink); font-weight:500;
-            box-shadow:0 1px 2px rgba(28,25,23,.07); }
-  .tab:hover { color:var(--accent); border-color:transparent; }
+  .tabs { margin-left:auto; display:flex; gap:4px; }
+  .tab { font:600 13px var(--font-sans); letter-spacing:-0.01em; padding:6px 12px 8px;
+         border:0; border-bottom:2px solid transparent; background:none;
+         color:var(--ink-2); margin-bottom:-9px; }
+  .tab:hover { color:var(--ink); }
+  .tab.on { color:var(--ink); border-bottom-color:var(--accent); }
 
   #report {
     display:none; flex:1; overflow-y:auto; background:var(--paper);
