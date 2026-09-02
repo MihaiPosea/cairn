@@ -221,20 +221,35 @@ func looksGenerated(spec string) bool {
 
 func specifierIsTemplate(spec string) bool {
 	for _, seg := range strings.Split(spec, "/") {
-		if seg == "template" || seg == "templates" {
-			return true
+		for _, d := range templateDirs {
+			if seg == d {
+				return true
+			}
 		}
 	}
 	return false
 }
 
+// templateDirs hold code that is copied into a new project rather than run in
+// place, so its imports refer to files that appear only after scaffolding.
+//
+// The names vary by project — t3 uses "template", Qwik uses "starters" — and
+// missing one turns an entire directory of intentional dangling imports into
+// what looks like a broken repository.
+var templateDirs = []string{
+	"template", "templates", "starter", "starters",
+	"scaffold", "scaffolds", "boilerplate", "blueprints",
+}
+
 func isTemplate(path string) bool {
-	for _, marker := range []string{"/template/", "/templates/"} {
-		if strings.Contains(path, marker) {
-			return true
+	for _, seg := range strings.Split(path, "/") {
+		for _, d := range templateDirs {
+			if seg == d {
+				return true
+			}
 		}
 	}
-	return strings.HasPrefix(path, "template/") || strings.HasPrefix(path, "templates/")
+	return false
 }
 
 // UnresolvedSummary is a one-line explanation of the unresolved rate, or "" if

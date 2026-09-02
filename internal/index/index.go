@@ -28,7 +28,7 @@ import (
 // truncating specifiers containing escapes; to 3 when it learned to read
 // .vue, .svelte and .astro. Any cache written earlier holds results the
 // current parser would not produce.
-const formatVersion = 3
+const formatVersion = 4
 
 // Index is a content-addressed cache of parse results.
 //

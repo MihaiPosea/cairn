@@ -153,3 +153,42 @@ export { default } from "./def";
 		t.Errorf("BUG: export forms lost an import, got %v", got)
 	}
 }
+
+// `export default "some string"` is not a re-export. Without the `from` check
+// it read as one, inventing a module named after the string's contents.
+func TestExportDefaultStringIsNotAnImport(t *testing.T) {
+	for _, src := range []string{
+		`export default 'hello vite'`,
+		`export default "absolute import";`,
+		"export default `template literal`;",
+		`export default { a: "./not-an-import" };`,
+		`export default ["./nor-this"];`,
+		`export const msg = "./definitely-not";`,
+		`export default 42;`,
+	} {
+		got := specs(t, "a.ts", src)
+		if len(got) != 0 {
+			t.Errorf("%q produced imports %v — none of these are imports", src, got)
+		}
+	}
+}
+
+// Real re-exports must still be found.
+func TestRealReexportsStillWork(t *testing.T) {
+	src := `export { a } from "./a";
+export * from "./b";
+export * as ns from "./c";
+export type { T } from "./d";
+export { default } from "./e";
+`
+	got := specs(t, "a.ts", src)
+	want := []string{"./a", "./b", "./c", "./d", "./e"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("import %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}

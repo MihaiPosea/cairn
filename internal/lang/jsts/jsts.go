@@ -245,9 +245,21 @@ func sanitize(s string) string {
 	}, s)
 }
 
-// fromExportStatement handles re-exports. A plain `export const x = 1` has no
-// source string and is correctly ignored.
+// fromExportStatement handles re-exports.
+//
+// The `from` keyword must be present. Without that check, `export default
+// 'hello vite'` reads as a re-export of a module named "hello vite": the string
+// is a direct child of the export statement either way, and only the keyword
+// distinguishes a re-export from a plain exported value.
+//
+// That produced *invented* edges — worse than a missed one, because a missing
+// edge understates the graph while a fabricated one puts a node in it that no
+// code ever mentions. Found across the Vite repository, where playground
+// fixtures export string literals by the dozen.
 func fromExportStatement(n *ts.Node, l *ts.Language, src []byte) (lang.RawImport, bool) {
+	if !hasDirectChild(n, l, "from") {
+		return lang.RawImport{}, false
+	}
 	spec, ok := sourceString(n, l, src)
 	if !ok {
 		return lang.RawImport{}, false

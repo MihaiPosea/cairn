@@ -468,6 +468,16 @@ func (r *Resolver) Resolve(fromFile, specifier string) Result {
 		return Result{Kind: ToBuiltin, Name: specifier, Via: "bare-builtin"}
 	}
 
+	// 4b. "@name" with no slash cannot be a package.
+	//
+	// npm requires a scoped name to be @scope/name, so a bare @-prefixed
+	// specifier is necessarily something a bundler plugin provides:
+	// @qwik-router-config, @qwik-client-manifest, @docs-updated. If an alias
+	// were going to explain it, that already happened above.
+	if strings.HasPrefix(specifier, "@") && !strings.Contains(specifier, "/") {
+		return Result{Kind: ToVirtual, Name: specifier, Via: "virtual-at-prefix"}
+	}
+
 	// 5. a package in this monorepo — your own code, not a dependency
 	if res, ok := r.tryWorkspace(specifier); ok {
 		return res
