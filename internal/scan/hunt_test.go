@@ -37,3 +37,24 @@ func TestEmptyDirectoryScansCleanly(t *testing.T) {
 		t.Errorf("expected 0 files, got %d", res.FilesScanned)
 	}
 }
+
+// A glob import becomes one edge per matching file, not a single edge.
+func TestGlobImportProducesAnEdgePerMatch(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, root, "src/index.ts", `import msgs from "../intl/*.json";`)
+	for _, l := range []string{"en-US", "fr-FR", "de-DE"} {
+		mustWrite(t, root, "intl/"+l+".json", "{}")
+	}
+
+	res, err := RunWith(root, Options{NoCache: true, SkipPackages: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Unresolved) != 0 {
+		t.Fatalf("glob should resolve, got %v", res.Unresolved)
+	}
+	deps := res.Graph.Dependencies("file:src/index.ts")
+	if len(deps) != 3 {
+		t.Errorf("got %d edges, want one per matched file", len(deps))
+	}
+}

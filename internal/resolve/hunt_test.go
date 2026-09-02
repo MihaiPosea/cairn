@@ -380,3 +380,69 @@ func TestOwnBundleResolvesToPackageEntry(t *testing.T) {
 		t.Error("should be flagged as coming from a build output")
 	}
 }
+
+// Parcel and Vite expand a glob specifier into every matching file, and the
+// importing module depends on all of them.
+func TestGlobImports(t *testing.T) {
+	root := hrepo(t, map[string]string{
+		"src/Alert.tsx":       "",
+		"intl/en-US.json":     "{}",
+		"intl/fr-FR.json":     "{}",
+		"intl/de-DE.json":     "{}",
+		"intl/nested/x.json":  "{}",
+		"other/thing.json":    "{}",
+	})
+	got := resolver(t, root).Resolve("src/Alert.tsx", "../intl/*.json")
+
+	if got.Kind != ToGlob {
+		t.Fatalf("got %v (%s), want a glob", got.Kind, got.Reason)
+	}
+	if len(got.Matches) != 3 {
+		t.Fatalf("matches = %v, want the three locale files", got.Matches)
+	}
+	for _, m := range got.Matches {
+		if !strings.HasPrefix(m, "intl/") || strings.Contains(m, "nested") {
+			t.Errorf("unexpected match %q", m)
+		}
+	}
+	// Deterministic ordering, like everything else.
+	if got.Matches[0] != "intl/de-DE.json" {
+		t.Errorf("matches are not sorted: %v", got.Matches)
+	}
+}
+
+// A glob that matches nothing must not silently succeed.
+func TestGlobMatchingNothingIsUnresolved(t *testing.T) {
+	root := hrepo(t, map[string]string{"src/a.ts": ""})
+	if got := resolver(t, root).Resolve("src/a.ts", "../intl/*.json"); got.Kind == ToGlob {
+		t.Errorf("a glob matching nothing should not resolve, got %v", got.Matches)
+	}
+}
+
+// A bare specifier containing "*" is a typo, not a glob.
+func TestBareStarIsNotAGlob(t *testing.T) {
+	root := hrepo(t, map[string]string{"a.ts": ""})
+	if got := resolver(t, root).Resolve("a.ts", "some*package"); got.Kind == ToGlob {
+		t.Error("a bare specifier with a star must not be expanded as a glob")
+	}
+}
+
+// A glob must not reach outside the repository.
+func TestGlobCannotEscapeTheRepo(t *testing.T) {
+	outer := t.TempDir()
+	root := filepath.Join(outer, "repo")
+	os.MkdirAll(filepath.Join(root, "src"), 0o755)
+	os.WriteFile(filepath.Join(outer, "secret.json"), []byte("{}"), 0o644)
+	os.WriteFile(filepath.Join(root, "src", "a.ts"), []byte(""), 0o644)
+
+	r, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := r.Resolve("src/a.ts", "../../*.json")
+	for _, m := range got.Matches {
+		if strings.HasPrefix(m, "..") {
+			t.Errorf("glob escaped the repository: %q", m)
+		}
+	}
+}

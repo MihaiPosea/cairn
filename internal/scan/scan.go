@@ -385,6 +385,19 @@ func addImport(res *Result, r *resolve.Resolver, fromFile string, imp lang.RawIm
 		})
 	}
 
+	// A glob import depends on every file it matches, so it becomes one edge
+	// per match rather than a single edge to the first.
+	if out.Kind == resolve.ToGlob {
+		for _, m := range out.Matches {
+			n := res.Graph.AddNode(&graph.Node{ID: graph.NodeID(graph.File, m), Kind: graph.File, Path: m})
+			_ = res.Graph.AddEdge(graph.Edge{
+				From: from, To: n.ID, Kind: edgeKind(imp.Kind),
+				Specifier: imp.Specifier, Line: imp.Line,
+			})
+		}
+		return
+	}
+
 	var to *graph.Node
 	switch out.Kind {
 	case resolve.ToFile:

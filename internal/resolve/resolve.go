@@ -29,6 +29,8 @@ const (
 	ToBuiltin
 	// ToVirtual is a module synthesised by a framework or bundler.
 	ToVirtual
+	// ToGlob is a pattern matching many files at once.
+	ToGlob
 	// Unresolved means none of the rules matched. Always carries a Reason.
 	Unresolved
 )
@@ -43,6 +45,8 @@ func (k Kind) String() string {
 		return "builtin"
 	case ToVirtual:
 		return "virtual"
+	case ToGlob:
+		return "glob"
 	case Unresolved:
 		return "unresolved"
 	}
@@ -60,6 +64,12 @@ type Result struct {
 	Subpath string
 	// Name is the builtin's name for ToBuiltin.
 	Name string
+	// Matches lists every file a glob specifier expands to, repo-relative.
+	//
+	// A glob import depends on all of them, so the graph gets an edge to each.
+	// Collapsing it to one file would understate the dependency, and dropping
+	// it would lose the edges entirely.
+	Matches []string
 	// Reason explains an Unresolved result. This text is shown to users, so it
 	// says what was tried, not just that it failed.
 	Reason string
@@ -399,6 +409,18 @@ func (r *Resolver) Resolve(fromFile, specifier string) Result {
 	// next year is handled without a change here.
 	if name, ok := virtualModule(specifier); ok {
 		return Result{Kind: ToVirtual, Name: name, Via: "virtual"}
+	}
+
+	// 1d. a glob pattern.
+	//
+	// Parcel and Vite both let a specifier match many files at once —
+	// "../intl/*.json" pulls in every locale file beside it. React Spectrum
+	// uses this heavily; treated as a single path it resolves to nothing and
+	// the dependency on all of those files is simply missing from the graph.
+	if strings.ContainsAny(specifier, "*") && (strings.HasPrefix(specifier, ".") || strings.HasPrefix(specifier, "/")) {
+		if res, ok := r.tryGlob(fromFile, specifier); ok {
+			return res
+		}
 	}
 
 	// 2. relative or absolute path
@@ -896,4 +918,44 @@ func virtualModule(spec string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// tryGlob expands a glob specifier into the files it matches.
+//
+// Only patterns anchored at a relative or absolute path are expanded; a bare
+// specifier containing "*" is far more likely to be a typo than a glob, and
+// inventing matches for one would be worse than reporting it.
+func (r *Resolver) tryGlob(fromFile, specifier string) (Result, bool) {
+	base := filepath.Dir(filepath.Join(r.root, filepath.FromSlash(fromFile)))
+	if strings.HasPrefix(specifier, "/") {
+		base = r.root
+	}
+	pattern := filepath.Join(base, filepath.FromSlash(specifier))
+
+	// "**" is not something filepath.Glob understands; collapse it to "*" so a
+	// recursive pattern at least matches one level rather than nothing.
+	pattern = strings.ReplaceAll(pattern, "**", "*")
+
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		return Result{}, false
+	}
+
+	out := Result{Kind: ToGlob, Via: "glob"}
+	for _, m := range matches {
+		rel := r.rel(m)
+		if strings.HasPrefix(rel, "..") {
+			continue // a glob may not reach outside the repository
+		}
+		if fi, err := os.Stat(m); err != nil || fi.IsDir() {
+			continue
+		}
+		out.Matches = append(out.Matches, rel)
+	}
+	if len(out.Matches) == 0 {
+		return Result{}, false
+	}
+	sort.Strings(out.Matches)
+	out.Path = out.Matches[0]
+	return out, true
 }
