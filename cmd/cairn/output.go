@@ -182,7 +182,11 @@ func runBlast(res *scan.Result, target string, asJSON bool) error {
 		fmt.Println("  changing it is safe — or it is dead. try `cairn dead`.")
 		return nil
 	}
-	fmt.Printf("  %d files depend on this\n\n", len(b.Affected))
+	verb := "depend"
+	if len(b.Affected) == 1 {
+		verb = "depends"
+	}
+	fmt.Printf("  %s %s on this\n\n", plural(len(b.Affected), "file"), verb)
 	byDepth := map[int][]string{}
 	maxDepth := 0
 	for id, d := range b.Affected {
