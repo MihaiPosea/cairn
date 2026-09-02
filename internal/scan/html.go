@@ -74,7 +74,8 @@ func findHTML(root string) []string {
 		}
 		if d.IsDir() {
 			name := d.Name()
-			if path != root && (skipDirs[name] || strings.HasPrefix(name, ".")) {
+			if path != root && (skipDirs[name] || strings.HasPrefix(name, ".") ||
+				(outputDirs[name] && isGenerated(path))) {
 				return filepath.SkipDir
 			}
 			return nil

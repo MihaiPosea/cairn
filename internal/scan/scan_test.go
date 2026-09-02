@@ -225,3 +225,61 @@ func TestEditInvalidatesOnlyThatFile(t *testing.T) {
 		t.Errorf("hits=%d, want %d (every other file)", res.CacheHits, res.FilesScanned-1)
 	}
 }
+
+// "build", "dist" and "out" are names for generated output and also perfectly
+// ordinary names for source directories. Skipping them wherever they appear
+// silently loses real code, and silently is the operative word: a directory
+// that is never descended into leaves no trace in any count or warning.
+//
+// Found by sweeping 34 repositories — astro keeps a hundred lines of
+// hand-written TypeScript in packages/astro/src/core/build/, and every one of
+// them was invisible.
+func TestSourceDirectoriesNamedLikeOutputAreStillScanned(t *testing.T) {
+	root := t.TempDir()
+	write := func(p, body string) {
+		full := filepath.Join(root, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	write("pkg/package.json", `{"name":"pkg"}`)
+	// Real source that happens to live under directories named like output.
+	write("pkg/src/index.ts", `import "./build/analyzer"; import "./out/writer";`)
+	write("pkg/src/build/analyzer.ts", `export const analyze = 1;`)
+	write("pkg/src/out/writer.ts", `export const write = 1;`)
+	// Actual build output, beside the manifest it was built from.
+	write("pkg/dist/index.js", `export const generated = 1;`)
+	write("pkg/build/bundle.js", `export const bundled = 1;`)
+
+	res, err := RunWith(root, Options{SkipPackages: true, NoCache: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seen := map[string]bool{}
+	for _, n := range res.Graph.Nodes {
+		seen[n.Path] = true
+	}
+	for _, want := range []string{
+		"pkg/src/index.ts", "pkg/src/build/analyzer.ts", "pkg/src/out/writer.ts",
+	} {
+		if !seen[want] {
+			t.Errorf("%s is source and was not scanned", want)
+		}
+	}
+	for _, notWant := range []string{"pkg/dist/index.js", "pkg/build/bundle.js"} {
+		if seen[notWant] {
+			t.Errorf("%s is build output beside its package.json and should be skipped", notWant)
+		}
+	}
+	// And the imports into those directories must resolve, or the files are
+	// present but disconnected, which is barely better than missing.
+	if res.UnresolvedRate() > 0 {
+		t.Errorf("imports into src/build and src/out should resolve, rate is %.2f%%: %v",
+			res.UnresolvedRate()*100, res.Unresolved)
+	}
+}

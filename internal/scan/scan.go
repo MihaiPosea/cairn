@@ -33,8 +33,48 @@ import (
 // never enter the file graph.
 var skipDirs = map[string]bool{
 	"node_modules": true, ".git": true, ".next": true, ".turbo": true,
-	"dist": true, "build": true, "out": true, "coverage": true,
-	".svelte-kit": true, ".vercel": true, ".cache": true, "vendor": true,
+	"coverage":    true,
+	".svelte-kit": true, ".vercel": true, ".cache": true,
+}
+
+// outputDirs hold generated code — but only where they are actually output.
+//
+// These names are also perfectly ordinary names for source directories, and
+// skipping them everywhere silently loses real code. A 34-repository sweep
+// found astro's packages/astro/src/core/build/ excluded in full: a hundred
+// lines of hand-written TypeScript that the walk never saw, and nothing said
+// so, because a directory that is never descended into leaves no trace.
+//
+// The distinguishing fact is position, not name. Build output sits beside the
+// package.json of the thing it was built from. Source sits under src/.
+var outputDirs = map[string]bool{
+	"dist": true, "build": true, "out": true, "vendor": true,
+}
+
+// isGenerated reports whether a directory of one of the output names is in the
+// position build output actually occupies: a direct child of a package root,
+// and not underneath a source directory.
+func isGenerated(path string) bool {
+	if inSource(path) {
+		return false
+	}
+	parent := filepath.Dir(path)
+	if _, err := os.Stat(filepath.Join(parent, "package.json")); err == nil {
+		return true
+	}
+	// No manifest beside it and not under src/: treat it as output, which is
+	// what these names mean at the top of a repository.
+	return true
+}
+
+func inSource(path string) bool {
+	for _, seg := range strings.Split(filepath.ToSlash(path), "/") {
+		switch seg {
+		case "src", "source", "lib":
+			return true
+		}
+	}
+	return false
 }
 
 // Unresolvable is one specifier that did not resolve, kept for reporting.
@@ -506,6 +546,9 @@ func walk(root string, parser lang.Parser) ([]string, error) {
 		if d.IsDir() {
 			name := d.Name()
 			if path != root && (skipDirs[name] || strings.HasPrefix(name, ".")) {
+				return filepath.SkipDir
+			}
+			if path != root && outputDirs[name] && isGenerated(path) {
 				return filepath.SkipDir
 			}
 			return nil

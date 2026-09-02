@@ -41,11 +41,11 @@ func TestRepoShapes(t *testing.T) {
 		{
 			name: "next-app-router",
 			files: map[string]string{
-				"package.json":  `{"dependencies":{"next":"15.0.0","react":"19.0.0"}}`,
-				"tsconfig.json": `{"compilerOptions":{"paths":{"@/*":["./*"]}}}`,
-				"app/page.tsx":  `import {B} from "@/components/Button"; import "./globals.css"; export default () => <B/>;`,
-				"app/layout.tsx": `export default ({children}) => children;`,
-				"app/globals.css": `body{}`,
+				"package.json":          `{"dependencies":{"next":"15.0.0","react":"19.0.0"}}`,
+				"tsconfig.json":         `{"compilerOptions":{"paths":{"@/*":["./*"]}}}`,
+				"app/page.tsx":          `import {B} from "@/components/Button"; import "./globals.css"; export default () => <B/>;`,
+				"app/layout.tsx":        `export default ({children}) => children;`,
+				"app/globals.css":       `body{}`,
 				"components/Button.tsx": `import {u} from "@/lib/utils"; export const B = () => null;`,
 				"lib/utils.ts":          `export const u = 1;`,
 			},
@@ -54,10 +54,10 @@ func TestRepoShapes(t *testing.T) {
 		{
 			name: "next-pages-router",
 			files: map[string]string{
-				"package.json":       `{"dependencies":{"next":"14.0.0"}}`,
-				"tsconfig.json":      `{"compilerOptions":{"baseUrl":"src","paths":{"~/*":["./*"]}}}`,
-				"src/pages/index.tsx": `import {H} from "~/components/Header"; export default () => <H/>;`,
-				"src/pages/_app.tsx":  `export default ({Component}) => <Component/>;`,
+				"package.json":              `{"dependencies":{"next":"14.0.0"}}`,
+				"tsconfig.json":             `{"compilerOptions":{"baseUrl":"src","paths":{"~/*":["./*"]}}}`,
+				"src/pages/index.tsx":       `import {H} from "~/components/Header"; export default () => <H/>;`,
+				"src/pages/_app.tsx":        `export default ({Component}) => <Component/>;`,
 				"src/components/Header.tsx": `export const H = () => null;`,
 			},
 			wantFiles: 3,
@@ -82,7 +82,7 @@ func TestRepoShapes(t *testing.T) {
 				"vite.config.ts": `import {defineConfig} from "vite";
 import path from "node:path";
 export default defineConfig({resolve:{alias:{"@": path.resolve(__dirname, "./src")}}});`,
-				"src/main.ts": `import {u} from "@/utils"; console.log(u);`,
+				"src/main.ts":  `import {u} from "@/utils"; console.log(u);`,
 				"src/utils.ts": `export const u = 1;`,
 			},
 			wantFiles: 3,
@@ -90,13 +90,13 @@ export default defineConfig({resolve:{alias:{"@": path.resolve(__dirname, "./src
 		{
 			name: "pnpm-monorepo",
 			files: map[string]string{
-				"package.json":        `{"name":"root","private":true,"workspaces":["packages/*"]}`,
-				"pnpm-workspace.yaml": "packages:\n  - 'packages/*'\n",
-				"packages/ui/package.json":   `{"name":"@acme/ui","main":"./src/index.ts"}`,
-				"packages/ui/src/index.ts":   `export const Button = 1;`,
-				"packages/app/package.json":  `{"name":"@acme/app","dependencies":{"@acme/ui":"workspace:*"}}`,
-				"packages/app/tsconfig.json": `{"compilerOptions":{"paths":{"@/*":["./src/*"]}}}`,
-				"packages/app/src/main.ts":   `import {Button} from "@acme/ui"; import {h} from "@/helpers";`,
+				"package.json":                `{"name":"root","private":true,"workspaces":["packages/*"]}`,
+				"pnpm-workspace.yaml":         "packages:\n  - 'packages/*'\n",
+				"packages/ui/package.json":    `{"name":"@acme/ui","main":"./src/index.ts"}`,
+				"packages/ui/src/index.ts":    `export const Button = 1;`,
+				"packages/app/package.json":   `{"name":"@acme/app","dependencies":{"@acme/ui":"workspace:*"}}`,
+				"packages/app/tsconfig.json":  `{"compilerOptions":{"paths":{"@/*":["./src/*"]}}}`,
+				"packages/app/src/main.ts":    `import {Button} from "@acme/ui"; import {h} from "@/helpers";`,
 				"packages/app/src/helpers.ts": `export const h = 1;`,
 			},
 			wantFiles: 3,
@@ -119,8 +119,8 @@ import { u } from "./utils";
 		{
 			name: "svelte",
 			files: map[string]string{
-				"package.json":  `{"devDependencies":{"svelte":"5.0.0"}}`,
-				"src/main.ts":   `import App from "./App.svelte";`,
+				"package.json": `{"devDependencies":{"svelte":"5.0.0"}}`,
+				"src/main.ts":  `import App from "./App.svelte";`,
 				"src/App.svelte": `<script lang="ts">
   import Child from "./Child.svelte";
   import { u } from "./utils";
@@ -148,17 +148,17 @@ import { u } from "../lib/utils";
 		{
 			name: "node-commonjs-backend",
 			files: map[string]string{
-				"package.json":   `{"name":"api","main":"src/server.js","dependencies":{"express":"4.0.0"}}`,
-				"src/server.js":  `const express = require("express"); const routes = require("./routes");`,
+				"package.json":        `{"name":"api","main":"src/server.js","dependencies":{"express":"4.0.0"}}`,
+				"src/server.js":       `const express = require("express"); const routes = require("./routes");`,
 				"src/routes/index.js": `const db = require("../db"); module.exports = {};`,
-				"src/db.js":      `module.exports = {};`,
+				"src/db.js":           `module.exports = {};`,
 			},
 			wantFiles: 3,
 		},
 		{
 			name: "library-src-dist",
 			files: map[string]string{
-				"package.json": `{"name":"lib","main":"./dist/index.js","module":"./dist/index.mjs","types":"./dist/index.d.ts","exports":{".":{"import":"./src/index.ts"}}}`,
+				"package.json":   `{"name":"lib","main":"./dist/index.js","module":"./dist/index.mjs","types":"./dist/index.d.ts","exports":{".":{"import":"./src/index.ts"}}}`,
 				"src/index.ts":   `export * from "./client";`,
 				"src/client.ts":  `import {h} from "./helpers"; export const c = h;`,
 				"src/helpers.ts": `export const h = 1;`,
@@ -169,9 +169,9 @@ import { u } from "../lib/utils";
 		{
 			name: "react-native-platform-extensions",
 			files: map[string]string{
-				"package.json":    `{"main":"index.js","dependencies":{"react-native":"0.76.0"}}`,
-				"index.js":        `import App from "./src/App";`,
-				"src/App.tsx":     `import {Btn} from "./Button"; export default () => null;`,
+				"package.json":           `{"main":"index.js","dependencies":{"react-native":"0.76.0"}}`,
+				"index.js":               `import App from "./src/App";`,
+				"src/App.tsx":            `import {Btn} from "./Button"; export default () => null;`,
 				"src/Button.ios.tsx":     `export const Btn = 1;`,
 				"src/Button.android.tsx": `export const Btn = 2;`,
 			},
@@ -180,8 +180,8 @@ import { u } from "../lib/utils";
 		{
 			name: "nested-tsconfig-per-directory",
 			files: map[string]string{
-				"package.json":  `{"name":"root"}`,
-				"tsconfig.json": `{"compilerOptions":{"paths":{"@root/*":["./*"]}}}`,
+				"package.json":           `{"name":"root"}`,
+				"tsconfig.json":          `{"compilerOptions":{"paths":{"@root/*":["./*"]}}}`,
 				"apps/web/tsconfig.json": `{"extends":"../../tsconfig.json","compilerOptions":{"paths":{"@web/*":["./src/*"]}}}`,
 				"apps/web/src/index.ts":  `import {u} from "@web/utils"; export const x = u;`,
 				"apps/web/src/utils.ts":  `export const u = 1;`,
