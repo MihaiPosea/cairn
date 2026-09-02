@@ -48,7 +48,7 @@ and the precision and recall numbers are published.
 - [x] M2 — resolution: tsconfig paths, extension ladder, ESM TypeScript, index files
 - [x] M3 — package graph from lockfiles (bun · npm · pnpm · yarn) and node_modules
 - [x] M4 — the join, and the five answers
-- [ ] M5 — incremental index (re-scan only what changed)
+- [x] M5 — incremental index: 1.53s cold, 75ms warm on 5,000 files
 - [ ] M6 — differential correctness harness vs. the real bundler
 - [ ] M7 — web UI
 

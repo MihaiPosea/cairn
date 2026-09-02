@@ -182,3 +182,43 @@ concurrently, but a pool hands each worker its own and takes it back.
 The number matters more than the change: 41 s of CPU for 5,000 small files was
 never plausible, and the only reason it was visible at all is that the target
 (under 3 s cold) had been written down before the code was.
+
+---
+
+## M5 — the incremental index
+
+Measured on the generated 5,000-file repo:
+
+| | wall clock | cache |
+|---|---|---|
+| cold, empty cache | 1.53 s | 5,001 misses |
+| warm, nothing changed | **0.075 s** | 5,001 hits |
+| one file edited | **0.083 s** | 5,000 hits, 1 miss |
+
+**Keyed by content hash, never by mtime.**
+mtime changes on a fresh checkout, a `touch`, or clock skew without the file
+changing, and does *not* change when a file is restored from backup. It is
+wrong in both directions. Hashing costs one read, and the read has to happen
+anyway — parsing is what actually costs.
+
+**The extension is part of the key.**
+The same bytes parsed as `.ts` and as `.tsx` produce different trees, because
+`<T>x` is a type assertion in one and JSX in the other. Keying on content alone
+would serve one file's parse for the other.
+
+**A format version, checked on load.**
+Without it, upgrading cairn silently serves parse results produced by the old
+parser — a stale cache indistinguishable from a correct one. On any mismatch,
+corruption, or decode failure the whole cache is discarded. That costs one slow
+scan; trusting a bad cache costs a wrong answer.
+
+**Written via temp file and rename**, because rename is atomic and a
+half-written cache is permanent silent corruption.
+
+**Entries for deleted files are kept.** They cost a few hundred bytes each and
+make branch switching free: checking out an old branch finds its files already
+cached. The whole 5,000-file cache is 528 KB.
+
+Rejected: SQLite. The access pattern is "load everything at startup, save
+everything at exit" — that is a file, not a database. A single gob file needs
+no dependency and no schema migration.

@@ -163,3 +163,65 @@ func TestScanIsDeterministic(t *testing.T) {
 		}
 	}
 }
+
+// A warm cache must produce exactly the same graph as a cold one.
+func TestCacheDoesNotChangeResults(t *testing.T) {
+	root := fixture(t)
+
+	cold, err := RunWith(root, Options{NoCache: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// First cached run populates; second reads it back.
+	if _, err := Run(root); err != nil {
+		t.Fatal(err)
+	}
+	warm, err := Run(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if warm.CacheHits == 0 {
+		t.Error("second run should have hit the cache")
+	}
+	if warm.CacheMisses != 0 {
+		t.Errorf("nothing changed, so there should be no misses, got %d", warm.CacheMisses)
+	}
+	if warm.ImportsFound != cold.ImportsFound {
+		t.Errorf("cached run found %d imports, uncached found %d", warm.ImportsFound, cold.ImportsFound)
+	}
+
+	a, b := cold.Graph.IDs(), warm.Graph.IDs()
+	if len(a) != len(b) {
+		t.Fatalf("cached graph has %d nodes, uncached has %d", len(b), len(a))
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			t.Fatalf("node %d differs: cached %s, uncached %s", i, b[i], a[i])
+		}
+	}
+}
+
+// Editing a file must invalidate exactly that file.
+func TestEditInvalidatesOnlyThatFile(t *testing.T) {
+	root := fixture(t)
+	if _, err := Run(root); err != nil {
+		t.Fatal(err)
+	}
+
+	target := filepath.Join(root, "lib", "orphan.ts")
+	if err := os.WriteFile(target, []byte(`import "./utils"; export const nobody = 2;`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Run(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.CacheMisses != 1 {
+		t.Errorf("one edited file should cause exactly 1 cache miss, got %d", res.CacheMisses)
+	}
+	if res.CacheHits != res.FilesScanned-1 {
+		t.Errorf("hits=%d, want %d (every other file)", res.CacheHits, res.FilesScanned-1)
+	}
+}

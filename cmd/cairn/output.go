@@ -24,6 +24,8 @@ type summaryOut struct {
 	Unanalyzable   int     `json:"unanalyzable"`
 	ParseFailures  int     `json:"parse_failures"`
 	AliasesLoaded  bool    `json:"tsconfig_aliases_loaded"`
+	CacheHits      int     `json:"cache_hits"`
+	CacheMisses    int     `json:"cache_misses"`
 
 	PackageSource       string   `json:"package_source,omitempty"`
 	Declared            int      `json:"declared,omitempty"`
@@ -48,6 +50,8 @@ func summary(res *scan.Result) summaryOut {
 		Unanalyzable:   len(res.Unanalyzable),
 		ParseFailures:  len(res.ParseFailures),
 		AliasesLoaded:  res.AliasesLoaded,
+		CacheHits:      res.CacheHits,
+		CacheMisses:    res.CacheMisses,
 	}
 	if res.Packages != nil {
 		out.PackageSource = res.Packages.Source
@@ -77,6 +81,10 @@ func printSummary(res *scan.Result) {
 	fmt.Printf("  %-22s %d\n", "runtime builtins", s[graph.Builtin])
 	if res.AliasesLoaded {
 		fmt.Printf("  %-22s %s\n", "tsconfig aliases", "loaded")
+	}
+	if total := res.CacheHits + res.CacheMisses; total > 0 {
+		fmt.Printf("  %-22s %d of %d files (%d reparsed)\n", "served from cache",
+			res.CacheHits, total, res.CacheMisses)
 	}
 	if n := len(res.ParseFailures); n > 0 {
 		fmt.Printf("  %-22s %d\n", "files that failed", n)

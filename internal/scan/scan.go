@@ -17,6 +17,7 @@ import (
 	"sync"
 
 	"github.com/MihaiPosea/cairn/internal/graph"
+	"github.com/MihaiPosea/cairn/internal/index"
 	"github.com/MihaiPosea/cairn/internal/join"
 	"github.com/MihaiPosea/cairn/internal/lang"
 	"github.com/MihaiPosea/cairn/internal/lang/jsts"
@@ -68,6 +69,9 @@ type Result struct {
 	// this is the first thing to check.
 	AliasesLoaded bool
 
+	// CacheHits and CacheMisses count files served from the parse cache.
+	CacheHits, CacheMisses int
+
 	// Packages is the external half of the graph, nil if packages were skipped.
 	Packages *pkgs.Graph
 	// Join reports what merging the two halves revealed.
@@ -84,6 +88,9 @@ type Options struct {
 	// MeasureSizes walks node_modules to get installed byte sizes. It is the
 	// most expensive thing cairn does, so it is opt-in.
 	MeasureSizes bool
+	// NoCache skips the parse cache entirely, in both directions. Used by the
+	// correctness harness, which must never measure a cached answer.
+	NoCache bool
 }
 
 // UnresolvedRate is the share of resolvable specifiers that did not resolve.
@@ -121,6 +128,11 @@ func RunWith(dir string, opts Options) (*Result, error) {
 		return nil, err
 	}
 
+	var ix *index.Index
+	if !opts.NoCache {
+		ix = index.Open(root)
+	}
+
 	res := &Result{
 		Graph:         graph.New(),
 		Root:          root,
@@ -143,7 +155,7 @@ func RunWith(dir string, opts Options) (*Result, error) {
 	// unchanged repo diff against each other. Collecting first and sorting by
 	// path costs one slice and buys determinism outright.
 	byPath := make(map[string]parsed, len(files))
-	for p := range parseAll(root, files, parser) {
+	for p := range parseAll(root, files, parser, ix) {
 		byPath[p.path] = p
 	}
 	for _, f := range files { // files is already sorted
@@ -169,6 +181,12 @@ func RunWith(dir string, opts Options) (*Result, error) {
 		return res.Unresolved[i].Line < res.Unresolved[j].Line
 	})
 	sort.Strings(res.ParseFailures)
+
+	if ix != nil {
+		res.CacheHits, res.CacheMisses = ix.Stats()
+		// A cache that fails to save costs a slow scan next time, nothing more.
+		_ = ix.Save()
+	}
 
 	if !opts.SkipPackages {
 		attachPackages(root, res, opts)
@@ -197,7 +215,11 @@ func attachPackages(root string, res *Result, opts Options) {
 }
 
 // parseAll fans out across CPUs and funnels results back through one channel.
-func parseAll(root string, files []string, parser lang.Parser) <-chan parsed {
+//
+// Each worker reads a file, hashes it, and consults the cache before parsing.
+// The read has to happen regardless — hashing is a few microseconds on top,
+// and parsing is what actually costs.
+func parseAll(root string, files []string, parser lang.Parser, ix *index.Index) <-chan parsed {
 	out := make(chan parsed, 64)
 	jobs := make(chan string, 64)
 
@@ -217,6 +239,21 @@ func parseAll(root string, files []string, parser lang.Parser) <-chan parsed {
 					out <- parsed{path: rel, err: err}
 					continue
 				}
+
+				if ix != nil {
+					key := cacheKey(rel, src)
+					if imports, ok := ix.Get(key); ok {
+						out <- parsed{path: rel, imports: imports}
+						continue
+					}
+					imports, err := parser.Parse(rel, src)
+					if err == nil {
+						ix.Put(key, imports)
+					}
+					out <- parsed{path: rel, imports: imports, err: err}
+					continue
+				}
+
 				imports, err := parser.Parse(rel, src)
 				out <- parsed{path: rel, imports: imports, err: err}
 			}
@@ -233,6 +270,16 @@ func parseAll(root string, files []string, parser lang.Parser) <-chan parsed {
 	}()
 
 	return out
+}
+
+// cacheKey combines the file extension with its content hash.
+//
+// The extension is part of the key because it selects the grammar: the same
+// bytes parsed as .ts and as .tsx produce different trees, since <T>x is a
+// type assertion in one and JSX in the other. Keying on content alone would
+// serve one file's parse for the other.
+func cacheKey(rel string, src []byte) string {
+	return filepath.Ext(rel) + ":" + index.Hash(src)
 }
 
 // addImport resolves one import and records it on the graph.
