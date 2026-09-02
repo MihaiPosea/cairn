@@ -139,3 +139,44 @@ func TestSystematicAbsenceIsDistinguishedFromAMistake(t *testing.T) {
 		t.Errorf("2 imports should not be excused as codegen, got %q", got)
 	}
 }
+
+// Scaffolding lives under different directory names in different projects.
+// Missing one turns a whole directory of intentional dangling imports into
+// what looks like a broken repository.
+func TestTemplateDirectoryNames(t *testing.T) {
+	for _, dir := range []string{"template", "templates", "starter", "starters", "scaffold", "boilerplate"} {
+		got := ClusterUnresolved([]Unresolvable{
+			{File: dir + "/apps/base/src/entry.ssr.tsx", Specifier: "./root"},
+		})
+		if !strings.Contains(got[0].Category, "scaffolding templates") {
+			t.Errorf("%s/ got %q, want scaffolding", dir, got[0].Category)
+		}
+	}
+}
+
+// Playground code is its own category: it really runs, so "demo code" is a
+// different statement from "meant to fail".
+func TestPlaygroundIsItsOwnCategory(t *testing.T) {
+	got := ClusterUnresolved([]Unresolvable{
+		{File: "playground/hmr/missing-file/main.js", Specifier: "./a.js"},
+	})
+	if !strings.Contains(got[0].Category, "playground") {
+		t.Errorf("got %q, want the playground category", got[0].Category)
+	}
+	if strings.Contains(got[0].Category, "meant to fail") {
+		t.Error("playground code must not be excused as a test fixture")
+	}
+}
+
+// Generated filenames are recognised wherever the file lands.
+func TestGeneratedFilenameConventions(t *testing.T) {
+	for _, spec := range []string{
+		"../gen/nxs.gen", "./types.gen.ts", "../schema.generated.ts",
+		"./api-generated.ts", "../../runtime/client/idle.prebuilt.js",
+	} {
+		got := ClusterUnresolved([]Unresolvable{{File: "src/a.ts", Specifier: spec}})
+		if !strings.Contains(got[0].Category, "codegen") {
+			t.Errorf("%q got %q, want codegen", spec, got[0].Category)
+		}
+	}
+}

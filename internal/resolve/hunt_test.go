@@ -446,3 +446,30 @@ func TestGlobCannotEscapeTheRepo(t *testing.T) {
 		}
 	}
 }
+
+// A bare "@name" with no slash cannot be an npm package — npm requires
+// @scope/name — so it is necessarily provided by a bundler plugin.
+func TestBareAtPrefixIsVirtual(t *testing.T) {
+	root := hrepo(t, map[string]string{"a.ts": ""})
+	r := resolver(t, root)
+	for _, spec := range []string{"@qwik-router-config", "@qwik-client-manifest", "@docs-updated"} {
+		if got := r.Resolve("a.ts", spec); got.Kind != ToVirtual {
+			t.Errorf("Resolve(%q) = %v (%s), want virtual", spec, got.Kind, got.Reason)
+		}
+	}
+	// A properly scoped package is still a package.
+	if got := r.Resolve("a.ts", "@scope/pkg"); got.Kind != ToPackage {
+		t.Errorf("@scope/pkg = %v, want package", got.Kind)
+	}
+}
+
+// React Router v7 generates route types and exposes them as ./+types/<route>.
+func TestReactRouterTypegenIsVirtual(t *testing.T) {
+	root := hrepo(t, map[string]string{"app/routes/index.tsx": ""})
+	r := resolver(t, root)
+	for _, spec := range []string{"./+types/route", "./+types/_index", "../+types/root"} {
+		if got := r.Resolve("app/routes/index.tsx", spec); got.Kind != ToVirtual {
+			t.Errorf("Resolve(%q) = %v, want virtual", spec, got.Kind)
+		}
+	}
+}
