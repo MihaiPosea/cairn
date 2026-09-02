@@ -166,6 +166,24 @@ func (g *Graph) Dependencies(id string) []Edge { return g.out[id] }
 // This is the direction blast radius walks.
 func (g *Graph) Dependents(id string) []Edge { return g.in[id] }
 
+// EdgeCount returns the number of edges, optionally restricted to those whose
+// target is of the given kinds.
+func (g *Graph) EdgeCount(toKinds ...Kind) int {
+	want := map[Kind]bool{}
+	for _, k := range toKinds {
+		want[k] = true
+	}
+	n := 0
+	for _, id := range g.Order {
+		for _, e := range g.out[id] {
+			if len(want) == 0 || want[g.Nodes[e.To].Kind] {
+				n++
+			}
+		}
+	}
+	return n
+}
+
 // IDs returns every node ID in insertion order.
 func (g *Graph) IDs() []string { return g.Order }
 

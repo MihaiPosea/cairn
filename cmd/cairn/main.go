@@ -6,10 +6,14 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/MihaiPosea/cairn/internal/graph"
+	"github.com/MihaiPosea/cairn/internal/scan"
 )
 
 const usage = `cairn — see what your project actually depends on
@@ -57,7 +61,7 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		return scan(abs, *asJSON)
+		return scan_(abs, *asJSON)
 
 	case "blast", "dead", "why", "cycles", "cost":
 		return fmt.Errorf("%s: not implemented yet (milestone M4)", cmd)
@@ -71,11 +75,83 @@ func run(args []string) error {
 	}
 }
 
-// scan walks the repo, parses what it finds, resolves the imports, and prints a
-// summary of the resulting graph.
-//
-// M1 fills this in. For now it exists so the wiring is real and every later
-// milestone has somewhere to land.
-func scan(dir string, asJSON bool) error {
-	return fmt.Errorf("scan %s: not implemented yet (milestone M1)", dir)
+// scan walks the repo, parses what it finds, resolves the imports, and prints
+// a summary of the resulting graph.
+func scan_(dir string, asJSON bool) error {
+	res, err := scan.Run(dir)
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		return json.NewEncoder(os.Stdout).Encode(summary(res))
+	}
+	printSummary(res)
+	return nil
+}
+
+type summaryOut struct {
+	Root           string  `json:"root"`
+	Files          int     `json:"files"`
+	Imports        int     `json:"imports"`
+	FileEdges      int     `json:"file_edges"`
+	Packages       int     `json:"packages"`
+	Builtins       int     `json:"builtins"`
+	Unresolved     int     `json:"unresolved"`
+	UnresolvedRate float64 `json:"unresolved_rate"`
+	Unanalyzable   int     `json:"unanalyzable"`
+	ParseFailures  int     `json:"parse_failures"`
+	AliasesLoaded  bool    `json:"tsconfig_aliases_loaded"`
+}
+
+func summary(res *scan.Result) summaryOut {
+	s := res.Graph.Stats()
+	return summaryOut{
+		Root:           res.Root,
+		Files:          s[graph.File],
+		Imports:        res.ImportsFound,
+		FileEdges:      res.Graph.EdgeCount(graph.File),
+		Packages:       s[graph.Package],
+		Builtins:       s[graph.Builtin],
+		Unresolved:     len(res.Unresolved),
+		UnresolvedRate: res.UnresolvedRate(),
+		Unanalyzable:   len(res.Unanalyzable),
+		ParseFailures:  len(res.ParseFailures),
+		AliasesLoaded:  res.AliasesLoaded,
+	}
+}
+
+func printSummary(res *scan.Result) {
+	s := res.Graph.Stats()
+	fmt.Printf("%s\n\n", res.Root)
+	fmt.Printf("  %-22s %d\n", "files", s[graph.File])
+	fmt.Printf("  %-22s %d\n", "imports", res.ImportsFound)
+	fmt.Printf("  %-22s %d\n", "file -> file edges", res.Graph.EdgeCount(graph.File))
+	fmt.Printf("  %-22s %d\n", "packages referenced", s[graph.Package])
+	fmt.Printf("  %-22s %d\n", "runtime builtins", s[graph.Builtin])
+
+	if res.AliasesLoaded {
+		fmt.Printf("  %-22s %s\n", "tsconfig aliases", "loaded")
+	}
+	if n := len(res.ParseFailures); n > 0 {
+		fmt.Printf("  %-22s %d\n", "files that failed", n)
+	}
+
+	fmt.Printf("\n  %-22s %d (%.1f%% of imports)\n", "unresolved", len(res.Unresolved), res.UnresolvedRate()*100)
+	for i, u := range res.Unresolved {
+		if i == 10 {
+			fmt.Printf("      … and %d more\n", len(res.Unresolved)-10)
+			break
+		}
+		fmt.Printf("      %s:%d  %s\n", u.File, u.Line, u.Specifier)
+	}
+
+	if n := len(res.Unanalyzable); n > 0 {
+		fmt.Printf("\n  %-22s %d (import() with a computed path)\n", "unanalyzable", n)
+		for i, u := range res.Unanalyzable {
+			if i == 5 {
+				break
+			}
+			fmt.Printf("      %s:%d  %s\n", u.File, u.Line, u.Reason)
+		}
+	}
 }
