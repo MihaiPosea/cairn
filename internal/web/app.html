@@ -1195,9 +1195,16 @@ stage.addEventListener('click', e => {
   if (moved) return;
   const hit = boxAt(...worldAt(e.clientX, e.clientY));
   if (!hit) { select(null); return; }
-  if (hit.header) { collapseGroup(hit.box.id); return; }
-  if (hit.box.group && !isOpen(hit.box)) { expandGroup(hit.box); return; }
-  if (!isOpen(hit.box)) select(hit.box.id);
+  // A click tells you about the thing. Going inside it is a second gesture —
+  // double-click, or the button in the panel. Descending on a single click
+  // meant a folder could never be asked what it was: the only thing clicking
+  // one did was replace the screen.
+  select(hit.box.id);
+});
+
+stage.addEventListener('dblclick', e => {
+  const hit = boxAt(...worldAt(e.clientX, e.clientY));
+  if (hit && hit.box.group) descend(hit.box);
 });
 
 stage.addEventListener('wheel', e => {
@@ -1414,6 +1421,86 @@ function goTo(id) {
   moveTo(VW / 2 - (t.x + t.bw / 2) * ns, VH / 2 - (t.y + t.bh / 2) * ns, ns);
 }
 
+// What a folder actually is.
+//
+// This used to be its name, its path, a file count and a button. Clicking a
+// box was the main thing anyone did with the picture and it told them almost
+// nothing, which is the difference between a diagram and a tool.
+//
+// Everything here is derived from the edges rather than stored: which parts
+// outside this folder it depends on, which depend on it, and which files
+// inside carry the weight.
+function folderFacts(x) {
+  const inside = id => {
+    const n = item(id);
+    return n && n.label && x.label && n.label.startsWith(x.label);
+  };
+  const out = new Map(), inc = new Map();
+  let internal = 0;
+  const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+  const away = id => {
+    const c = childOf(id);
+    if (c && c !== x.id) return c;
+    const r = railRep(id);
+    return r ? r.id : moduleIdOf(id);
+  };
+  for (const e of DATA.edges) {
+    const a = inside(e.from), b = inside(e.to);
+    if (a && b) internal++;
+    else if (a) bump(out, away(e.to));
+    else if (b) bump(inc, away(e.from));
+  }
+  const shape = m => [...m.entries()]
+    .map(([id, n]) => { const t = item(id);
+      return { id, n, label: t ? (t.moduleName || t.base || t.label) : id.replace(/^g:/, '') }; })
+    .sort((a, b) => b.n - a.n).slice(0, 8);
+
+  // Every file beneath the folder, not only its direct children. A package's
+  // files are almost always a level or two down in src/, so the direct-leaf
+  // version of this listed whatever stray .d.ts sat at the top and called it
+  // the heaviest thing in there.
+  const kids = files.filter(n => n.label.startsWith(x.label))
+    .sort((a, b) => b.blast - a.blast).slice(0, 6);
+  return { out: shape(out), inc: shape(inc), internal, heavy: kids };
+}
+
+function renderFolder(panel, x) {
+  const f = folderFacts(x);
+  // Parts covers every workspace package; modules only the dozen at the top,
+  // which the reader is usually already past.
+  const mod = (DATA.parts && DATA.parts[x.id])
+           || (DATA.modules || []).find(m => m.id === x.id);
+  const dead = x.deadCount || 0;
+
+  const list = (title, rows, cls) => {
+    if (!rows.length) return '';
+    return `<h3><span class="k ${cls}"></span>${title}</h3><ul>` +
+      rows.map(r => `<li data-go="${esc(r.id)}">${esc(r.label)}` +
+                    `<span class="d"> ${r.n}</span></li>`).join('') + `</ul>`;
+  };
+
+  panel.innerHTML =
+    `<div class="kind">${esc(mod && mod.kind === 'workspace' ? 'package' : 'folder')}</div>` +
+    `<h2>${esc(mod ? mod.name : x.base)}</h2>` +
+    `<div class="dir">${esc(x.label || x.dir)}</div>` +
+    (mod && mod.desc ? `<div class="note">${esc(mod.desc)}</div>` : '') +
+    `<div class="row"><span>files inside</span><span>${x.count}</span></div>` +
+    `<div class="row"><span>imports between them</span><span>${f.internal}</span></div>` +
+    (mod && mod.entry ? `<div class="row"><span>entered through</span><span>${esc(mod.entry.split('/').pop())}</span></div>` : '') +
+    (dead ? `<div class="row"><span>nothing reaches</span><span>${dead}</span></div>` : '') +
+    `<button class="chip" id="openg">go inside →</button>` +
+    list('depends on', f.out, 'out') +
+    list('depended on by', f.inc, 'in') +
+    (f.heavy.length
+      ? `<h3>heaviest files here</h3><ul>` +
+        f.heavy.map(k => `<li data-go="${esc(k.id)}">${esc(k.base)}` +
+                         `<span class="d"> ${k.blast}</span></li>`).join('') + `</ul>`
+      : '');
+
+  document.getElementById('openg').onclick = () => descend(x);
+  wire(panel);
+}
+
 function renderPanel(x) {
   const panel = document.getElementById('panel');
   if (!x) {
@@ -1428,14 +1515,7 @@ function renderPanel(x) {
     wire(panel); return;
   }
 
-  if (x.group) {
-    panel.innerHTML = `<div class="kind">folder</div><h2>${esc(x.base)}</h2>` +
-      `<div class="dir">${esc(x.dir)}</div>` +
-      `<div class="row"><span>files inside</span><span>${x.count}</span></div>` +
-      `<button class="chip" id="openg">go inside</button>`;
-    document.getElementById('openg').onclick = () => descend(x);
-    return;
-  }
+  if (x.group) { renderFolder(panel, x); return; }
 
   // Aggregated edges lose the line they came from, so the raw edges are used
   // here: this panel is about specific statements, not bundles.

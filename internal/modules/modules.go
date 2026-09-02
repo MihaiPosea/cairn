@@ -16,6 +16,9 @@
 package modules
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -45,6 +48,10 @@ type Module struct {
 	Files int `json:"files"`
 	// Entry is the file the outside world enters through, if known.
 	Entry string `json:"entry,omitempty"`
+	// Desc is the package's own one-line description, when it declares one.
+	// A name says where code lives; this says what it is for, and it is the
+	// only such sentence anywhere in a repository that can be read cheaply.
+	Desc string `json:"desc,omitempty"`
 }
 
 // Edge is an import relationship between two modules.
@@ -62,6 +69,15 @@ type Edge struct {
 // Map is the module view of a repository.
 type Map struct {
 	Modules []Module `json:"modules"`
+	// Parts describes every workspace package in the repository, keyed by the
+	// viewer's group id — not only the dozen chosen as top-level modules.
+	//
+	// The opening view is usually one or two levels in, so the boxes on screen
+	// are rarely the modules themselves. Without this, everything a package
+	// declares about itself — its name, its purpose, the entry point it wants
+	// you to use — was known and then not shown, because the box the reader
+	// clicked was not in the module list.
+	Parts map[string]Module `json:"parts"`
 	// Of maps a node ID to its module ID. Packages are included, not only
 	// files: the viewer scopes by this map, and a package left out of it
 	// becomes an edge endpoint that resolves to nothing.
@@ -149,6 +165,26 @@ func Build(res *scan.Result) *Map {
 		return m.Modules[i].Path < m.Modules[j].Path
 	})
 
+	for i := range m.Modules {
+		m.Modules[i].Desc = describe(res.Root, m.Modules[i].Path)
+	}
+
+	m.Parts = map[string]Module{}
+	for _, w := range res.Workspaces {
+		dir := strings.TrimSuffix(w.Dir, "/")
+		if dir == "" {
+			continue
+		}
+		part := Module{
+			ID: "g:" + dir, Path: dir + "/", Name: w.Name, Kind: "workspace",
+			Entry: w.Entry, Desc: describe(res.Root, dir+"/"),
+		}
+		if part.Name == "" {
+			part.Name = dir
+		}
+		m.Parts[part.ID] = part
+	}
+
 	m.Edges = moduleEdges(res.Graph, m.Of, byPath)
 	m.Cycles = moduleCycles(m.Modules, m.Edges)
 	return m
@@ -177,6 +213,28 @@ func newModule(path string, ws map[string]scan.Workspace) *Module {
 		m.Entry = w.Entry
 	}
 	return m
+}
+
+// describe reads a module's own account of itself out of its package.json.
+func describe(root, modPath string) string {
+	if modPath == "" || strings.HasPrefix(modPath, "\x00") {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(modPath), "package.json"))
+	if err != nil || len(b) > 1<<20 {
+		return ""
+	}
+	var pkg struct {
+		Description string `json:"description"`
+	}
+	if json.Unmarshal(b, &pkg) != nil {
+		return ""
+	}
+	d := strings.TrimSpace(pkg.Description)
+	if len(d) > 200 {
+		d = d[:200] + "…"
+	}
+	return d
 }
 
 func workspaceIndex(list []scan.Workspace) map[string]scan.Workspace {

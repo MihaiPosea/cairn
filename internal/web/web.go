@@ -99,6 +99,11 @@ type Payload struct {
 	// the boundary is not real.
 	ModuleCycles [][]string `json:"moduleCycles,omitempty"`
 
+	// Parts is what every workspace package declares about itself, keyed by
+	// the group id of its directory, so a box anywhere in the tree can be
+	// asked what it is.
+	Parts map[string]modules.Module `json:"parts"`
+
 	// Report is the readable account of the repository: what it is, and what
 	// is worth knowing about it. A count is not a finding — "cycles 5" tells
 	// nobody anything, so each of these names the thing and what it costs.
@@ -297,6 +302,7 @@ func Build(res *scan.Result, includePackages bool) *Payload {
 			used[m] = true
 		}
 	}
+	p.Parts = mm.Parts
 	p.ModuleOf = drawn
 	p.Modules = make([]modules.Module, 0, len(mm.Modules))
 	for _, m := range mm.Modules {
