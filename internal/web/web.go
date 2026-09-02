@@ -29,8 +29,10 @@ type Node struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
 	Kind  string `json:"kind"`
-	X     int    `json:"x"`
-	Y     int    `json:"y"`
+	// Depth is the node's layer: the longest path from an entry point. The
+	// browser packs the layout, because what is on screen changes as groups
+	// expand and collapse.
+	Depth int `json:"depth"`
 	// Deps and Dependents are counts, shown before anything is clicked.
 	Deps       int `json:"deps"`
 	Dependents int `json:"dependents"`
@@ -64,18 +66,18 @@ type Payload struct {
 	Rules     map[string]int `json:"rules"`
 	Warnings  []string       `json:"warnings"`
 
-	// Width and Height bound the laid-out graph so the viewer can fit it to the
-	// screen without measuring every node itself.
-	Width  int `json:"width"`
-	Height int `json:"height"`
+	// ExactBlast reports whether Node.Blast is the transitive figure or the
+	// cheaper direct-dependent count used on very large graphs.
+	ExactBlast bool `json:"exactBlast"`
 }
 
-// maxNodes caps what is drawn.
+// maxNodes caps what is sent.
 //
-// A 5,000-node SVG is both unusable and unreadable. Truncating is honest as
-// long as it is stated, so the page says exactly how many nodes it left out
-// rather than quietly showing a subset.
-const maxNodes = 1200
+// The cap used to be 1,200 because that was as many boxes as could be drawn.
+// It is far higher now: the page groups files by directory and shows a few
+// dozen nodes until you expand one, so the limit is the payload size rather
+// than the picture. Truncation is still stated when it happens.
+const maxNodes = 20000
 
 // Build turns a scan result into a page payload.
 func Build(res *scan.Result, includePackages bool) *Payload {
@@ -113,12 +115,20 @@ func Build(res *scan.Result, includePackages bool) *Payload {
 		ids = ids[:maxNodes]
 	}
 
-	// The exact transitive blast radius is computed only for the nodes that
-	// survive, and always against the full graph so the number is true rather
-	// than relative to what happens to be drawn.
+	// Transitive blast radius costs one traversal per node — O(nodes x edges).
+	// That was fine when only 1,200 nodes were sent and is not now, so above a
+	// threshold the cheaper direct-dependent count stands in and the payload
+	// says so rather than quietly reporting a different number under the same
+	// name.
+	const exactBlastLimit = 4000
 	blast := make(map[string]int, len(ids))
+	exact := len(ids) <= exactBlastLimit
 	for _, id := range ids {
-		blast[id] = len(query.ReachableFrom(g, id, query.AllEdges)) - 1
+		if exact {
+			blast[id] = len(query.ReachableFrom(g, id, query.AllEdges)) - 1
+		} else {
+			blast[id] = len(g.Dependents(id))
+		}
 	}
 
 	deadRep := query.DeadFilesWith(g, res.ManifestEntries, len(res.Unanalyzable) > 0)
@@ -139,7 +149,6 @@ func Build(res *scan.Result, includePackages bool) *Payload {
 	}
 
 	depth := layers(g, ids)
-	pos, width, height := position(depth, ids, label)
 
 	inSet := make(map[string]bool, len(ids))
 	for _, id := range ids {
@@ -147,19 +156,17 @@ func Build(res *scan.Result, includePackages bool) *Payload {
 	}
 
 	p := &Payload{
-		Root:      res.Root,
-		Truncated: truncated,
-		Rules:     res.ResolvedVia,
-		Width:     width,
-		Height:    height,
+		Root:       res.Root,
+		Truncated:  truncated,
+		Rules:      res.ResolvedVia,
+		ExactBlast: exact,
 	}
 	for _, id := range ids {
 		n := g.Nodes[id]
-		xy := pos[id]
 		node := Node{
 			ID: id, Label: label(id), Kind: n.Kind.String(),
-			X: xy[0], Y: xy[1],
-			Deps: len(g.Dependencies(id)), Dependents: len(g.Dependents(id)),
+			Depth: depth[id],
+			Deps:  len(g.Dependencies(id)), Dependents: len(g.Dependents(id)),
 			Blast: blast[id], Bytes: n.Bytes,
 		}
 		if reason, ok := entries[id]; ok {

@@ -101,17 +101,22 @@ func TestEveryEdgeEndpointIsPresent(t *testing.T) {
 	}
 }
 
-// Node coordinates must be finite and non-negative, or the SVG silently
-// collapses.
-func TestLayoutProducesSanePositions(t *testing.T) {
+// Depth must increase along a dependency chain, since the browser packs the
+// layout from it.
+func TestDepthIncreasesAlongAChain(t *testing.T) {
 	res := build(t, map[string]string{
 		"app/page.tsx": `import "./a";`,
 		"app/a.ts":     `import "./b";`,
 		"app/b.ts":     `export const b = 1;`,
 	})
+	depth := map[string]int{}
 	for _, n := range Build(res, false).Nodes {
-		if n.X < 0 || n.Y < 0 {
-			t.Errorf("node %s has a negative position (%d,%d)", n.ID, n.X, n.Y)
+		if n.Depth < 0 {
+			t.Errorf("node %s has a negative depth", n.ID)
 		}
+		depth[n.Label] = n.Depth
+	}
+	if !(depth["app/page.tsx"] < depth["app/a.ts"] && depth["app/a.ts"] < depth["app/b.ts"]) {
+		t.Errorf("depth should increase along the chain, got %v", depth)
 	}
 }

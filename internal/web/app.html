@@ -86,6 +86,19 @@
   .sw.dead { border-color:var(--crit); border-style:dashed; }
   .sw.pkg { border-color:var(--pkg); background:var(--pkg-soft); }
   .hint { margin-left:auto; }
+  #chips {
+    display:none; gap:6px; align-items:center; flex-wrap:wrap;
+    padding:6px 16px; border-bottom:1px solid var(--rule); background:var(--surface-2);
+    flex-shrink:0;
+  }
+  .chips-label { font:10px ui-monospace,Menlo,monospace; color:var(--ink-soft);
+                 text-transform:uppercase; letter-spacing:.09em; margin-right:2px; }
+  .chip {
+    font:10px ui-monospace,Menlo,monospace; padding:3px 7px; border:1px solid var(--rule);
+    border-radius:10px; background:var(--surface); color:var(--ink-soft); cursor:pointer;
+  }
+  .chip:hover { border-color:var(--accent); color:var(--accent); }
+  .chip.alt { border-style:dashed; }
 </style>
 </head>
 <body>
@@ -96,6 +109,7 @@
   <button id="fit">fit</button>
   <div class="stats" id="stats"></div>
 </header>
+<div id="chips"></div>
 <main>
   <div id="stage"><canvas id="c"></canvas><canvas id="mini"></canvas></div>
   <aside id="panel"></aside>
@@ -112,29 +126,170 @@
 const DATA = {{.Data}};
 
 // ── model ───────────────────────────────────────────────────────────────────
-const NW = 220, NH = 20;                    // node box, in world units
-const nodes = DATA.nodes;
-const byId = new Map(nodes.map(n => [n.id, n]));
-const out = new Map(), inc = new Map();
-for (const e of DATA.edges) {
-  if (!byId.has(e.from) || !byId.has(e.to)) continue;
-  (out.get(e.from) || out.set(e.from, []).get(e.from)).push(e);
-  (inc.get(e.to) || inc.set(e.to, []).get(e.to)).push(e);
-}
+//
+// A repository has thousands of files and nobody can read a picture of all of
+// them. So the graph is drawn at whatever level of the directory tree the
+// reader has opened: one box per top-level package until you expand it, then
+// one per sub-directory, then finally per file. Everything below a closed box
+// is folded into it, and so are its edges.
 
-// Split each label once, so the renderer and the panel both get a filename and
-// a directory without doing string work per frame.
-for (const n of nodes) {
+const NW = 230, NH = 22, COLW = 258, ROWH = 30, GUTTER = 56;
+
+const files = DATA.nodes;
+const byId = new Map(files.map(n => [n.id, n]));
+
+for (const n of files) {
   const i = n.label.lastIndexOf('/');
   n.base = i < 0 ? n.label : n.label.slice(i + 1);
   n.dir = i < 0 ? '' : n.label.slice(0, i + 1);
+  // A package has no directory structure to fold; its scope is its group.
+  n.segs = n.kind === 'package'
+    ? (n.label.startsWith('@') ? [n.label.split('/')[0], n.label] : [n.label])
+    : n.label.split('/');
 }
 
-// Weight drives visual emphasis: the most-depended-on nodes should be findable
-// without reading every box. Normalised so it does not depend on repo size.
-let maxBlast = 1;
-for (const n of nodes) maxBlast = Math.max(maxBlast, n.blast);
-for (const n of nodes) n.w = Math.min(1, Math.log1p(n.blast) / Math.log1p(maxBlast));
+// ── the tree ────────────────────────────────────────────────────────────────
+// Every directory becomes a group node keyed by its path. Leaves are files.
+
+const groups = new Map();   // id -> {id,label,base,depth,kids,leaves,blast,parent,kind}
+
+function groupFor(pathSegs) {
+  const id = 'g:' + pathSegs.join('/');
+  let g = groups.get(id);
+  if (!g) {
+    g = {
+      id, group: true, base: pathSegs[pathSegs.length - 1] + '/',
+      label: pathSegs.join('/') + '/',
+      dir: pathSegs.length > 1 ? pathSegs.slice(0, -1).join('/') + '/' : '',
+      segs: pathSegs, kids: new Set(), leaves: [], count: 0,
+      blast: 0, depth: Infinity, kind: 'group', entry: false, dead: false,
+      parent: pathSegs.length > 1 ? 'g:' + pathSegs.slice(0, -1).join('/') : null,
+    };
+    groups.set(id, g);
+    if (g.parent) groupFor(pathSegs.slice(0, -1)).kids.add(id);
+  }
+  return g;
+}
+
+for (const n of files) {
+  const dirs = n.segs.slice(0, -1);
+  n.parent = dirs.length ? 'g:' + dirs.join('/') : null;
+  // Register the node against every ancestor so a closed group knows its size.
+  for (let k = 1; k <= dirs.length; k++) {
+    const g = groupFor(dirs.slice(0, k));
+    g.count++;
+    g.blast = Math.max(g.blast, n.blast);
+    g.depth = Math.min(g.depth, n.depth);
+    // A folder is only marked unreachable when everything in it is. Marking it
+    // on any single dead child painted most of a monorepo red and made the
+    // signal worthless.
+    g.deadCount = (g.deadCount || 0) + (n.dead ? 1 : 0);
+    if (n.entry) g.entry = true;
+    if (k === dirs.length) g.leaves.push(n.id);
+  }
+}
+for (const g of groups.values()) {
+  if (!isFinite(g.depth)) g.depth = 0;
+  g.dead = g.count > 0 && g.deadCount === g.count;
+}
+
+const roots = [];
+for (const g of groups.values()) if (!g.parent) roots.push(g.id);
+for (const n of files) if (!n.parent) roots.push(n.id);
+
+function item(id) { return groups.get(id) || byId.get(id); }
+
+// ── what is currently visible ───────────────────────────────────────────────
+const expanded = new Set();
+
+// The visible stand-in for a node: the outermost ancestor that is still closed.
+function repOf(id) {
+  const n = item(id);
+  const chain = [];
+  for (let p = n.parent; p; p = item(p).parent) chain.push(p);
+  chain.reverse();
+  for (const g of chain) if (!expanded.has(g)) return g;
+  return id;
+}
+
+// Open groups until the visible count lands in a readable band.
+//
+// A fixed starting depth is wrong for both shapes it meets: a flat repo shows
+// one box, a deep monorepo shows six hundred. Opening until the count is right
+// gives the same experience either way.
+function autoExpand() {
+  expanded.clear();
+  const TARGET = 55;
+  // One group per pass, always the largest still closed, because that is where
+  // the detail is hiding. Opening several at once overshoots badly — halving
+  // the closed set each pass took nx to 123 boxes when the target was 60.
+  for (let pass = 0; pass < 400; pass++) {
+    const vis = visibleIds();
+    if (vis.length >= TARGET) break;
+    let best = null;
+    for (const id of vis) {
+      const x = item(id);
+      if (!x.group || expanded.has(id)) continue;
+      if (x.kids.size + x.leaves.length < 2) continue;
+      if (!best || x.count > best.count) best = x;
+    }
+    if (!best) break;
+    expanded.add(best.id);
+  }
+}
+
+function visibleIds() {
+  const seen = new Set();
+  for (const n of files) seen.add(repOf(n.id));
+  return [...seen];
+}
+
+// ── layout, recomputed whenever the visible set changes ─────────────────────
+let view = { items: [], edges: [], width: 0, height: 0 };
+
+function relayout() {
+  const ids = visibleIds();
+  const items = ids.map(item);
+
+  // Aggregate edges onto the visible stand-ins.
+  const agg = new Map();
+  for (const e of DATA.edges) {
+    const a = repOf(e.from), b = repOf(e.to);
+    if (a === b) continue;
+    const k = a + ' ' + b;
+    const cur = agg.get(k);
+    if (cur) cur.n++;
+    else agg.set(k, { from: a, to: b, n: 1 });
+  }
+  const edges = [...agg.values()];
+
+  // Pack by depth, wrapping tall layers into sub-columns.
+  const byLayer = new Map();
+  for (const it of items) {
+    const d = it.depth || 0;
+    (byLayer.get(d) || byLayer.set(d, []).get(d)).push(it);
+  }
+  const depths = [...byLayer.keys()].sort((a, b) => a - b);
+  for (const d of depths) byLayer.get(d).sort((a, b) => a.label.localeCompare(b.label));
+
+  const maxRows = Math.max(6, Math.min(30, Math.ceil(Math.sqrt(items.length * 1.6))));
+  let x = 0, height = 0;
+  for (const d of depths) {
+    const list = byLayer.get(d);
+    const cols = Math.ceil(list.length / maxRows);
+    const rows = Math.ceil(list.length / cols);
+    list.forEach((it, i) => {
+      it.x = x + Math.floor(i / rows) * COLW;
+      it.y = (i % rows) * ROWH;
+      height = Math.max(height, it.y + NH);
+    });
+    x += cols * COLW + GUTTER;
+  }
+
+  view = { items, edges, width: x, height, index: new Map(items.map(i => [i.id, i])) };
+  for (const it of items) it.text = undefined;   // re-measure labels lazily
+  refreshChips();
+}
 
 // ── canvas ──────────────────────────────────────────────────────────────────
 const stage = document.getElementById('stage');
@@ -143,7 +298,18 @@ const ctx = cv.getContext('2d', { alpha: false });
 const mini = document.getElementById('mini');
 const mctx = mini.getContext('2d');
 
-let dpr = 1, VW = 0, VH = 0;
+let dpr = 1, VW = 0, VH = 0, tx = 0, ty = 0, s = 1;
+let selected = null, hovered = null, hotSet = null, filter = '';
+let C = {};
+
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function readColors() {
+  C = { paper: css('--paper'), surface: css('--surface'), surface2: css('--surface-2'),
+        ink: css('--ink'), inkSoft: css('--ink-soft'), rule: css('--rule'),
+        accent: css('--accent'), accentSoft: css('--accent-soft'), crit: css('--crit'),
+        pkg: css('--pkg'), pkgSoft: css('--pkg-soft'), edge: css('--edge'), edgeHot: css('--edge-hot') };
+}
+
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 2);
   const r = stage.getBoundingClientRect();
@@ -155,27 +321,11 @@ function resize() {
   draw();
 }
 
-// view transform: world -> screen is  s * p + t
-let tx = 0, ty = 0, s = 1;
-// Fit to height, not to both.
-//
-// A layered graph is wide and short by construction, so fitting both axes
-// shrinks it to an unreadable band across the middle of an empty screen — the
-// 14,000x1,100 layout of a 1,000-node repo lands at 8% zoom. Filling the height
-// and panning sideways keeps the boxes legible and matches how the graph reads:
-// left to right, entry points to leaves.
 function fit() {
-  const w = Math.max(DATA.width || 1000, 1) + NW;
-  const h = Math.max(DATA.height || 1000, 1) + NH;
-  const pad = 30;
-
+  const w = Math.max(view.width, 1) + NW, h = Math.max(view.height, 1) + NH, pad = 34;
   const byHeight = (VH - pad * 2) / h;
-  const byBoth = Math.min((VW - pad * 2) / w, byHeight);
-
-  // If the graph is nearly square it fits entirely; if it is wide, height wins.
-  s = w / h > (VW / VH) * 1.3 ? byHeight : byBoth;
-  s = Math.max(0.03, Math.min(s, 1.2));
-
+  s = w / h > (VW / VH) * 1.25 ? byHeight : Math.min((VW - pad * 2) / w, byHeight);
+  s = Math.max(0.05, Math.min(s, 1.1));
   tx = w * s <= VW - pad * 2 ? (VW - w * s) / 2 : pad;
   ty = (VH - h * s) / 2;
   draw();
@@ -184,172 +334,131 @@ function fit() {
 let raf = 0;
 function draw() { if (!raf) raf = requestAnimationFrame(render); }
 
-function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
-let C = {};
-function readColors() {
-  C = {
-    paper: css('--paper'), surface: css('--surface'), surface2: css('--surface-2'),
-    ink: css('--ink'), inkSoft: css('--ink-soft'), rule: css('--rule'),
-    accent: css('--accent'), accentSoft: css('--accent-soft'), crit: css('--crit'),
-    pkg: css('--pkg'), pkgSoft: css('--pkg-soft'), edge: css('--edge'), edgeHot: css('--edge-hot'),
-  };
-}
-
-let selected = null, hovered = null, hotSet = null, filter = '';
-
 function render() {
   raf = 0;
   ctx.save();
   ctx.scale(dpr, dpr);
   ctx.fillStyle = C.paper;
   ctx.fillRect(0, 0, VW, VH);
-
-  // Visible world rectangle, with a margin so edges entering from off-screen
-  // are still drawn.
-  const m = 200;
-  const x0 = (-tx) / s - m, y0 = (-ty) / s - m;
-  const x1 = (VW - tx) / s + m, y1 = (VH - ty) / s + m;
-
   ctx.translate(tx, ty);
   ctx.scale(s, s);
 
-  // Level of detail. Below these thresholds the work is skipped entirely
-  // rather than drawn too small to read — that is the whole reason a 1,000
-  // node graph can stay at 60fps while panning.
-  const showText = s > 0.42;
-  // Edges are hidden in the overview rather than drawn faintly. Four thousand
-  // lines at 10% zoom is a grey wash that hides the nodes and answers nothing;
-  // the overview's job is "where is everything", and edges only start meaning
-  // something once you can tell which box they touch.
-  const showEdges = s > 0.28 || !!selected;
-  const curved = s > 0.34;
+  const m = 220;
+  const x0 = -tx / s - m, y0 = -ty / s - m, x1 = (VW - tx) / s + m, y1 = (VH - ty) / s + m;
 
-  if (showEdges) drawEdges(x0, y0, x1, y1, curved);
-  drawNodes(x0, y0, x1, y1, showText);
+  const showText = s > 0.34;
+  const showEdges = s > 0.22 || !!selected;
+  if (showEdges) drawEdges(x0, y0, x1, y1, s > 0.3);
+  drawItems(x0, y0, x1, y1, showText);
 
   ctx.restore();
   drawMini();
 }
 
 function drawEdges(x0, y0, x1, y1, curved) {
-  ctx.lineWidth = 1 / s;
+  const idx = view.index;
+  const hot = [];
   ctx.strokeStyle = C.edge;
-  ctx.globalAlpha = selected ? 0.16 : 0.34;
-  ctx.beginPath();
-  let hot = null;
+  ctx.globalAlpha = selected ? 0.14 : 0.42;
 
-  for (const e of DATA.edges) {
-    const a = byId.get(e.from), b = byId.get(e.to);
+  // Grouped edges carry a weight, so they are stroked in a few passes by
+  // thickness rather than one path per edge. A bundle of 300 imports between
+  // two packages should not look like a bundle of one.
+  const buckets = [[], [], []];
+  for (const e of view.edges) {
+    const a = idx.get(e.from), b = idx.get(e.to);
     if (!a || !b) continue;
-    // Cull by the edge's bounding box.
     if (Math.max(a.x, b.x) + NW < x0 || Math.min(a.x, b.x) > x1) continue;
     if (Math.max(a.y, b.y) + NH < y0 || Math.min(a.y, b.y) > y1) continue;
-
-    const isHot = selected && (hotSet.has(e.from) && hotSet.has(e.to));
-    if (isHot) { (hot || (hot = [])).push([a, b]); continue; }
-
-    const ax = a.x + NW, ay = a.y + NH / 2, bx = b.x, by = b.y + NH / 2;
-    ctx.moveTo(ax, ay);
-    if (curved) {
-      const mx = (ax + bx) / 2;
-      ctx.bezierCurveTo(mx, ay, mx, by, bx, by);
-    } else {
-      ctx.lineTo(bx, by);
-    }
+    if (selected && hotSet.has(e.from) && hotSet.has(e.to)) { hot.push([a, b]); continue; }
+    buckets[e.n > 24 ? 2 : e.n > 4 ? 1 : 0].push([a, b]);
   }
-  ctx.stroke();
 
-  if (hot) {
+  const widths = [1, 1.8, 3];
+  for (let i = 0; i < 3; i++) {
+    if (!buckets[i].length) continue;
+    ctx.lineWidth = widths[i] / s;
+    ctx.beginPath();
+    for (const [a, b] of buckets[i]) path(a, b, curved);
+    ctx.stroke();
+  }
+
+  if (hot.length) {
     ctx.globalAlpha = 1;
     ctx.strokeStyle = C.edgeHot;
-    ctx.lineWidth = 1.6 / s;
+    ctx.lineWidth = 1.8 / s;
     ctx.beginPath();
-    for (const [a, b] of hot) {
-      const ax = a.x + NW, ay = a.y + NH / 2, bx = b.x, by = b.y + NH / 2;
-      ctx.moveTo(ax, ay);
-      const mx = (ax + bx) / 2;
-      ctx.bezierCurveTo(mx, ay, mx, by, bx, by);
-    }
+    for (const [a, b] of hot) path(a, b, true);
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
 }
 
-function drawNodes(x0, y0, x1, y1, showText) {
-  ctx.font = '11px ui-monospace, Menlo, monospace';
+function path(a, b, curved) {
+  const ax = a.x + NW, ay = a.y + NH / 2, bx = b.x, by = b.y + NH / 2;
+  ctx.moveTo(ax, ay);
+  if (curved) { const mx = (ax + bx) / 2; ctx.bezierCurveTo(mx, ay, mx, by, bx, by); }
+  else ctx.lineTo(bx, by);
+}
+
+function drawItems(x0, y0, x1, y1, showText) {
+  ctx.font = '12px ui-monospace, Menlo, monospace';
   ctx.textBaseline = 'middle';
-  ctx.lineWidth = 1 / s;
 
-  for (const n of nodes) {
-    if (n.x + NW < x0 || n.x > x1 || n.y + NH < y0 || n.y > y1) continue;
+  for (const it of view.items) {
+    if (it.x + NW < x0 || it.x > x1 || it.y + NH < y0 || it.y > y1) continue;
 
-    const dim = (selected && !hotSet.has(n.id)) || (filter && !n.label.toLowerCase().includes(filter));
-    ctx.globalAlpha = dim ? 0.14 : 1;
+    const dim = (selected && !hotSet.has(it.id)) || (filter && !it.label.toLowerCase().includes(filter));
+    ctx.globalAlpha = dim ? 0.12 : 1;
+    const isSel = it.id === selected, isHover = it.id === hovered;
 
-    const isSel = n.id === selected, isHover = n.id === hovered;
-    ctx.fillStyle = n.kind === 'package' ? C.pkgSoft : (isSel ? C.accentSoft : C.surface);
+    ctx.fillStyle = it.group ? C.surface2
+      : it.kind === 'package' ? C.pkgSoft
+      : isSel ? C.accentSoft : C.surface;
     ctx.strokeStyle = isSel || isHover ? C.accent
-      : n.dead ? C.crit
-      : n.entry ? C.accent
-      : n.kind === 'package' ? C.pkg
+      : it.dead ? C.crit
+      : it.entry ? C.accent
+      : it.kind === 'package' ? C.pkg
       : C.rule;
 
     ctx.beginPath();
-    ctx.rect(n.x, n.y, NW, NH);
+    ctx.rect(it.x, it.y, NW, NH);
     ctx.fill();
-
-    if (n.dead) { ctx.setLineDash([4 / s, 3 / s]); }
-    ctx.lineWidth = (isSel ? 2.4 : isHover ? 1.8 : n.entry || n.dead ? 1.5 : 1) / s;
+    if (it.dead && !it.group) ctx.setLineDash([4 / s, 3 / s]);
+    ctx.lineWidth = (isSel ? 2.4 : isHover ? 1.8 : it.group ? 1.4 : 1) / s;
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // A weight bar rather than a number: the eye finds the load-bearing files
-    // without reading anything.
-    if (n.w > 0.05) {
-      ctx.fillStyle = C.accent;
-      ctx.globalAlpha = (dim ? 0.14 : 1) * (0.18 + n.w * 0.55);
-      ctx.fillRect(n.x, n.y, 3, NH);
-      ctx.globalAlpha = dim ? 0.14 : 1;
-    }
-
     if (showText) {
-      // Filename first and at full contrast; the directory is dimmed and only
-      // drawn if it fits. Truncating from the left hid exactly the part that
-      // tells two same-named files apart.
-      //
-      // The truncated string is computed once per node and cached. Measuring it
-      // per frame meant a measureText call per character per visible node —
-      // about 27,000 of them a frame, which froze the tab outright while
-      // panning. Neither the font nor the box width ever changes, so the answer
-      // cannot either.
-      if (n.text === undefined) layoutText(n);
+      if (it.text === undefined) layoutText(it);
       ctx.fillStyle = C.ink;
-      ctx.fillText(n.base, n.x + 8, n.y + NH / 2);
-      if (n.text) {
+      ctx.fillText(it.base, it.x + 9, it.y + NH / 2);
+      if (it.group) {
+        // The count is the point of a closed group: it says how much is folded.
         ctx.fillStyle = C.inkSoft;
-        ctx.fillText(n.text, n.x + n.textX, n.y + NH / 2);
+        const c = String(it.count);
+        ctx.fillText(c, it.x + NW - 9 - ctx.measureText(c).width, it.y + NH / 2);
+      } else if (it.text) {
+        ctx.fillStyle = C.inkSoft;
+        ctx.fillText(it.text, it.x + it.textX, it.y + NH / 2);
       }
     }
   }
   ctx.globalAlpha = 1;
 }
 
-// layoutText resolves a node's drawn strings once and stores them on the node.
-function layoutText(n) {
-  const bw = ctx.measureText(n.base).width;
-  n.textX = 8 + bw + 6;
-  const room = NW - 8 - n.textX;
-  if (!n.dir || room < 24) { n.text = ''; return; }
-
-  if (ctx.measureText(n.dir).width <= room) { n.text = n.dir; return; }
-
-  // Binary search the cut point rather than trimming one character at a time.
-  let lo = 0, hi = n.dir.length;
+function layoutText(it) {
+  const bw = ctx.measureText(it.base).width;
+  it.textX = 9 + bw + 7;
+  const room = NW - 9 - it.textX - (it.group ? 34 : 0);
+  if (!it.dir || room < 22) { it.text = ''; return; }
+  if (ctx.measureText(it.dir).width <= room) { it.text = it.dir; return; }
+  let lo = 0, hi = it.dir.length;
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    if (ctx.measureText('…' + n.dir.slice(mid)).width <= room) hi = mid; else lo = mid + 1;
+    if (ctx.measureText('…' + it.dir.slice(mid)).width <= room) hi = mid; else lo = mid + 1;
   }
-  n.text = lo >= n.dir.length ? '' : '…' + n.dir.slice(lo);
+  it.text = lo >= it.dir.length ? '' : '…' + it.dir.slice(lo);
 }
 
 function drawMini() {
@@ -358,23 +467,11 @@ function drawMini() {
   mctx.scale(dpr, dpr);
   mctx.fillStyle = C.surface;
   mctx.fillRect(0, 0, w, h);
-
-  const gw = Math.max(DATA.width || 1, 1) + NW, gh = Math.max(DATA.height || 1, 1) + NH;
-  const k = Math.min(w / gw, h / gh) * 0.92;
+  const gw = Math.max(view.width, 1) + NW, gh = Math.max(view.height, 1) + NH;
+  const k = Math.min(w / gw, h / gh) * 0.9;
   const ox = (w - gw * k) / 2, oy = (h - gh * k) / 2;
-
   mctx.fillStyle = C.rule;
-  for (const n of nodes) {
-    mctx.fillRect(ox + n.x * k, oy + n.y * k, Math.max(1, NW * k), Math.max(1, NH * k));
-  }
-  if (selected) {
-    const n = byId.get(selected);
-    if (n) {
-      mctx.fillStyle = C.accent;
-      mctx.fillRect(ox + n.x * k - 1, oy + n.y * k - 1, Math.max(3, NW * k), Math.max(3, NH * k));
-    }
-  }
-  // Viewport rectangle.
+  for (const it of view.items) mctx.fillRect(ox + it.x * k, oy + it.y * k, Math.max(1, NW * k), Math.max(1, NH * k));
   mctx.strokeStyle = C.accent;
   mctx.lineWidth = 1;
   mctx.strokeRect(ox + (-tx / s) * k, oy + (-ty / s) * k, (VW / s) * k, (VH / s) * k);
@@ -382,180 +479,207 @@ function drawMini() {
 }
 
 // ── interaction ─────────────────────────────────────────────────────────────
-function worldAt(clientX, clientY) {
+function worldAt(cx, cy) {
   const r = stage.getBoundingClientRect();
-  return [(clientX - r.left - tx) / s, (clientY - r.top - ty) / s];
+  return [(cx - r.left - tx) / s, (cy - r.top - ty) / s];
 }
-
-function nodeAt(wx, wy) {
-  // Reverse order so the visually topmost wins; the list is small once culled.
-  for (let i = nodes.length - 1; i >= 0; i--) {
-    const n = nodes[i];
-    if (wx >= n.x && wx <= n.x + NW && wy >= n.y && wy <= n.y + NH) return n;
+function itemAt(wx, wy) {
+  for (let i = view.items.length - 1; i >= 0; i--) {
+    const it = view.items[i];
+    if (wx >= it.x && wx <= it.x + NW && wy >= it.y && wy <= it.y + NH) return it;
   }
   return null;
 }
 
 let dragging = false, moved = false, lx = 0, ly = 0;
-stage.addEventListener('mousedown', e => {
-  dragging = true; moved = false; lx = e.clientX; ly = e.clientY;
-  stage.classList.add('drag');
-});
+stage.addEventListener('mousedown', e => { dragging = true; moved = false; lx = e.clientX; ly = e.clientY; stage.classList.add('drag'); });
 addEventListener('mouseup', () => { dragging = false; stage.classList.remove('drag'); });
 addEventListener('mousemove', e => {
   if (dragging) {
     const dx = e.clientX - lx, dy = e.clientY - ly;
     if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
-    tx += dx; ty += dy; lx = e.clientX; ly = e.clientY;
-    draw();
+    tx += dx; ty += dy; lx = e.clientX; ly = e.clientY; draw();
     return;
   }
-  const [wx, wy] = worldAt(e.clientX, e.clientY);
-  const n = nodeAt(wx, wy);
-  const id = n ? n.id : null;
+  const it = itemAt(...worldAt(e.clientX, e.clientY));
+  const id = it ? it.id : null;
   if (id !== hovered) { hovered = id; stage.style.cursor = id ? 'pointer' : ''; draw(); }
 });
 
 stage.addEventListener('click', e => {
   if (moved) return;
-  const [wx, wy] = worldAt(e.clientX, e.clientY);
-  const n = nodeAt(wx, wy);
-  select(n ? n.id : null);
+  const it = itemAt(...worldAt(e.clientX, e.clientY));
+  if (!it) { select(null); return; }
+  if (it.group) { expandGroup(it); return; }
+  select(it.id);
 });
 
 stage.addEventListener('wheel', e => {
   e.preventDefault();
   const r = stage.getBoundingClientRect();
   const mx = e.clientX - r.left, my = e.clientY - r.top;
-  const f = Math.exp(-e.deltaY * 0.0015);
-  const ns = Math.max(0.02, Math.min(3, s * f));
-  tx = mx - (mx - tx) * (ns / s);
-  ty = my - (my - ty) * (ns / s);
-  s = ns;
+  const ns = Math.max(0.03, Math.min(3, s * Math.exp(-e.deltaY * 0.0015)));
+  tx = mx - (mx - tx) * (ns / s); ty = my - (my - ty) * (ns / s); s = ns;
   draw();
 }, { passive: false });
 
 mini.addEventListener('click', e => {
   e.stopPropagation();
   const r = mini.getBoundingClientRect();
-  const gw = Math.max(DATA.width || 1, 1) + NW, gh = Math.max(DATA.height || 1, 1) + NH;
-  const k = Math.min(r.width / gw, r.height / gh) * 0.92;
+  const gw = Math.max(view.width, 1) + NW, gh = Math.max(view.height, 1) + NH;
+  const k = Math.min(r.width / gw, r.height / gh) * 0.9;
   const ox = (r.width - gw * k) / 2, oy = (r.height - gh * k) / 2;
-  const wx = (e.clientX - r.left - ox) / k, wy = (e.clientY - r.top - oy) / k;
-  tx = VW / 2 - wx * s; ty = VH / 2 - wy * s;
+  tx = VW / 2 - ((e.clientX - r.left - ox) / k) * s;
+  ty = VH / 2 - ((e.clientY - r.top - oy) / k) * s;
   draw();
 });
+
+// Expanding keeps the group under the cursor roughly in place, so the picture
+// does not jump out from under the click that caused it.
+function expandGroup(g) {
+  const anchorX = g.x, anchorY = g.y;
+  expanded.add(g.id);
+  relayout();
+  const first = view.items.find(i => i.id === g.id || (i.parent === g.id));
+  if (first) { tx += (anchorX - first.x) * s; ty += (anchorY - first.y) * s; }
+  select(null);
+  draw();
+}
+
+function collapseGroup(id) {
+  expanded.delete(id);
+  for (const e of [...expanded]) if (e.startsWith(id + '/')) expanded.delete(e);
+  relayout(); select(null); fit();
+}
 
 document.getElementById('fit').addEventListener('click', fit);
+document.getElementById('q').addEventListener('input', e => { filter = e.target.value.toLowerCase(); draw(); });
 addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
   if (e.key === 'Escape') select(null);
-  if (e.key === 'f' && document.activeElement !== document.getElementById('q')) fit();
+  if (e.key === 'f') fit();
+  if (e.key === 'c') { expanded.clear(); autoExpand(); relayout(); select(null); fit(); }
 });
 
-document.getElementById('q').addEventListener('input', e => {
-  filter = e.target.value.toLowerCase();
-  draw();
-});
-
-// Everything that transitively depends on a node, plus what it imports.
 function upstream(id) {
   const seen = new Set([id]);
+  const inc = new Map();
+  for (const e of view.edges) (inc.get(e.to) || inc.set(e.to, []).get(e.to)).push(e.from);
   const q = [id];
   while (q.length) {
-    const cur = q.shift();
-    for (const e of (inc.get(cur) || [])) {
-      if (!seen.has(e.from)) { seen.add(e.from); q.push(e.from); }
-    }
+    for (const f of (inc.get(q.shift()) || [])) if (!seen.has(f)) { seen.add(f); q.push(f); }
   }
-  for (const e of (out.get(id) || [])) seen.add(e.to);
+  for (const e of view.edges) if (e.from === id) seen.add(e.to);
   return seen;
 }
 
 function select(id) {
   selected = id;
   hotSet = id ? upstream(id) : null;
-  renderPanel(id ? byId.get(id) : null);
+  renderPanel(id ? view.index.get(id) : null);
   draw();
 }
 
+// ── panel and chips ─────────────────────────────────────────────────────────
+function esc(x) { return String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
 function bytes(b) {
   if (!b) return null;
-  const u = ['B', 'KB', 'MB', 'GB'];
-  let i = 0;
+  const u = ['B', 'KB', 'MB', 'GB']; let i = 0;
   while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
   return b.toFixed(i ? 1 : 0) + ' ' + u[i];
 }
-function esc(x) {
-  return String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+function refreshChips() {
+  const bar = document.getElementById('chips');
+  const open = [...expanded].sort();
+  if (!open.length) { bar.innerHTML = ''; bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  bar.innerHTML = '<span class="chips-label">expanded</span>' +
+    open.map(id => `<button class="chip" data-collapse="${esc(id)}">${esc(id.slice(2))}/ ✕</button>`).join('') +
+    '<button class="chip alt" data-reset="1">collapse all</button>';
+  for (const el of bar.querySelectorAll('[data-collapse]')) {
+    el.onclick = () => collapseGroup(el.getAttribute('data-collapse'));
+  }
+  const r = bar.querySelector('[data-reset]');
+  if (r) r.onclick = () => { expanded.clear(); autoExpand(); relayout(); select(null); fit(); };
 }
 
-function renderPanel(n) {
+function renderPanel(it) {
   const panel = document.getElementById('panel');
-  if (!n) {
-    const top = nodes.slice().sort((a, b) => b.blast - a.blast).slice(0, 8);
+  if (!it) {
+    const top = view.items.slice().sort((a, b) => b.blast - a.blast).slice(0, 10);
     panel.innerHTML =
-      '<p class="empty"><b>Click any node.</b>Or start with the files the most others depend on:</p>' +
-      '<h3>most depended on</h3><ul>' +
-      top.map(t => `<li data-go="${esc(t.id)}"><span class="d">${esc(t.dir)}</span>${esc(t.base)}` +
-        ` <span class="d">${t.blast}</span></li>`).join('') + '</ul>';
-    wire(panel);
+      `<p class="empty"><b>${view.items.length} boxes, ${files.length} files.</b>` +
+      `Click a folder to open it. Click a file for its dependencies.</p>` +
+      `<h3>heaviest here</h3><ul>` +
+      top.map(t => `<li data-go="${esc(t.id)}">${esc(t.base)}` +
+        `<span class="d"> ${t.group ? t.count + ' files' : t.blast}</span></li>`).join('') + '</ul>';
+    wire(panel); return;
+  }
+
+  if (it.group) {
+    panel.innerHTML =
+      `<div class="kind">folder</div><h2>${esc(it.base)}</h2><div class="dir">${esc(it.dir)}</div>` +
+      `<div class="row"><span>files inside</span><span>${it.count}</span></div>` +
+      `<button class="chip" id="openg">open this folder</button>`;
+    document.getElementById('openg').onclick = () => expandGroup(it);
     return;
   }
 
-  const deps = out.get(n.id) || [], dependents = inc.get(n.id) || [];
-  const size = bytes(n.bytes);
-
-  let html = `<div class="kind">${esc(n.kind)}</div><h2>${esc(n.base)}</h2>`;
-  if (n.dir) html += `<div class="dir">${esc(n.dir)}</div>`;
-  html += `<div class="row"><span>breaks if changed</span><span>${n.blast}</span></div>`;
+  const deps = [], dependents = [];
+  for (const e of view.edges) {
+    if (e.from === it.id) deps.push(e);
+    if (e.to === it.id) dependents.push(e);
+  }
+  let html = `<div class="kind">${esc(it.kind)}</div><h2>${esc(it.base)}</h2>`;
+  if (it.dir) html += `<div class="dir">${esc(it.dir)}</div>`;
+  html += `<div class="row"><span>${DATA.exactBlast ? 'breaks if changed' : 'imported by (direct)'}</span><span>${it.blast}</span></div>`;
   html += `<div class="row"><span>imports</span><span>${deps.length}</span></div>`;
   html += `<div class="row"><span>imported by</span><span>${dependents.length}</span></div>`;
+  const size = bytes(it.bytes);
   if (size) html += `<div class="row"><span>installed size</span><span>${size}</span></div>`;
-  if (n.note) html += `<div class="note${n.dead ? ' bad' : ''}">${esc(n.note)}</div>`;
+  if (it.note) html += `<div class="note${it.dead ? ' bad' : ''}">${esc(it.note)}</div>`;
 
-  const list = (title, edges, key) => {
-    if (!edges.length) return '';
-    return `<h3>${title} (${edges.length})</h3><ul>` + edges.slice(0, 60).map(e => {
-      const t = byId.get(e[key]);
-      const label = t ? `<span class="d">${esc(t.dir)}</span>${esc(t.base)}` : esc(e[key]);
-      return `<li data-go="${esc(e[key])}">${label}</li>`;
-    }).join('') + '</ul>';
-  };
-  html += list('imported by', dependents, 'from');
-  html += list('imports', deps, 'to');
-
+  const list = (title, es, key) => es.length ? `<h3>${title} (${es.length})</h3><ul>` +
+    es.slice(0, 50).map(e => {
+      const t = view.index.get(e[key]);
+      return `<li data-go="${esc(e[key])}">${esc(t ? t.base : e[key])}` +
+        (e.n > 1 ? `<span class="d"> ×${e.n}</span>` : '') + `</li>`;
+    }).join('') + '</ul>' : '';
+  html += list('imported by', dependents, 'from') + list('imports', deps, 'to');
   panel.innerHTML = html;
   wire(panel);
 }
 
 function wire(panel) {
   for (const el of panel.querySelectorAll('[data-go]')) {
-    el.addEventListener('click', () => {
+    el.onclick = () => {
       const id = el.getAttribute('data-go');
-      const n = byId.get(id);
-      if (n) { tx = VW / 2 - (n.x + NW / 2) * s; ty = VH / 2 - (n.y + NH / 2) * s; }
-      select(id);
-    });
+      const t = view.index.get(id);
+      if (t) { tx = VW / 2 - (t.x + NW / 2) * s; ty = VH / 2 - (t.y + NH / 2) * s; }
+      if (t && t.group) expandGroup(t); else select(id);
+    };
   }
 }
 
 // ── boot ────────────────────────────────────────────────────────────────────
 const st = DATA.stats;
 document.getElementById('stats').innerHTML = [
-  ['files', st.files, false], ['imports', st.imports, false], ['packages', st.packages, false],
+  ['files', st.files, false], ['imports', st.imports, false],
   ['unresolved', st.unresolved, st.unresolved > 0],
   ['cycles', st.cycles, st.cycles > 0],
   ['unreachable', st.dead, st.dead > 0],
-].map(([k, v, warn]) => `<span class="${warn ? 'warn' : ''}">${k} <b>${v}</b></span>`).join('');
+].map(([k, v, w]) => `<span class="${w ? 'warn' : ''}">${k} <b>${v}</b></span>`).join('');
 
-if (DATA.truncated) {
-  document.getElementById('hint').textContent =
-    `showing the ${nodes.length} most-depended-on of ${nodes.length + DATA.truncated} nodes`;
-}
+document.getElementById('hint').textContent = DATA.truncated
+  ? `${DATA.truncated} nodes not sent · click a folder to open · f to fit · c to collapse`
+  : 'click a folder to open · f to fit · c to collapse all';
 
 readColors();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { readColors(); draw(); });
 addEventListener('resize', resize);
+autoExpand();
+relayout();
 resize();
 fit();
 renderPanel(null);
