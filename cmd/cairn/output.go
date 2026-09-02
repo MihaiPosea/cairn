@@ -792,3 +792,56 @@ func printDrift(r *drift.Report) {
 		fmt.Printf("\n%d regression%s\n", r.Regressions, plural(r.Regressions, "s"))
 	}
 }
+
+// runGrep searches, ordered by the dependency graph.
+func runGrep(res *scan.Result, pattern, anchor string, connected, ignoreCase bool, asJSON bool) error {
+	r, err := agent.Grep(res, pattern, agent.SearchOptions{
+		Anchor: anchor, ConnectedOnly: connected, IgnoreCase: ignoreCase,
+	})
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		return emit(r)
+	}
+
+	if anchor == "" {
+		for _, h := range r.Hits {
+			fmt.Printf("%s:%d: %s\n", h.Path, h.Line, h.Text)
+		}
+		fmt.Printf("\n%d matches in %d files. Pass --from <file> to order them by what is "+
+			"actually connected to it.\n", len(r.Hits), r.Searched)
+		return nil
+	}
+
+	shown := ""
+	for _, h := range r.Hits {
+		// A rule between the connected matches and the rest, because that is
+		// the line a reader needs: above it, files that can reach the anchor;
+		// below it, files that merely share a word.
+		if h.Hops < 0 && shown != "unrelated" {
+			shown = "unrelated"
+			fmt.Printf("\n— not connected to %s —\n\n", anchor)
+		} else if h.Hops >= 0 && shown == "" {
+			shown = "connected"
+		}
+		tag := "·"
+		switch {
+		case h.Hops == 0:
+			tag = "the file itself"
+		case h.Hops > 0 && h.Direction == "upstream":
+			tag = fmt.Sprintf("%d hop%s up — breaks if you change it", h.Hops, plural(h.Hops, "s"))
+		case h.Hops > 0:
+			tag = fmt.Sprintf("%d hop%s down — the target uses it", h.Hops, plural(h.Hops, "s"))
+		}
+		fmt.Printf("%s:%d  %s\n", h.Path, h.Line, tag)
+		fmt.Printf("    %s\n", h.Text)
+		if len(h.Via) > 2 {
+			fmt.Printf("    via %s\n", strings.Join(h.Via, " → "))
+		}
+	}
+
+	fmt.Printf("\n%d connected, %d unrelated, out of %d files searched (%d in the repo)\n",
+		r.Connected, r.Unrelated, r.Searched, r.OfFiles)
+	return nil
+}
