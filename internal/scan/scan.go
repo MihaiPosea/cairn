@@ -90,6 +90,14 @@ type Result struct {
 	// own package.json, and the script tags of any HTML document.
 	ManifestEntries []string
 
+	// Workspaces are the monorepo packages, empty for a single-package repo.
+	//
+	// The resolver discovers these to resolve cross-package imports and then
+	// threw them away. They are the truest module boundary a repo declares
+	// about itself — better than any heuristic over directory names — so the
+	// module map and everything built on it need them to escape the scan.
+	Workspaces []Workspace
+
 	// ResolvedVia counts how many specifiers each resolution rule handled.
 	//
 	// This is what makes a verification score mean something. A repo whose
@@ -107,6 +115,17 @@ type Result struct {
 }
 
 // Options controls how much work a scan does.
+// Workspace is one package of a monorepo, with paths made repo-relative.
+type Workspace struct {
+	// Name is what other packages import, e.g. "@acme/ui".
+	Name string
+	// Dir is the package directory, repo-relative and slash-separated.
+	Dir string
+	// Entry is the source file its package.json points at, repo-relative, or
+	// "" if none could be determined.
+	Entry string
+}
+
 type Options struct {
 	// SkipPackages builds only the file graph. Faster, and all that is needed
 	// for questions about your own code.
@@ -132,6 +151,35 @@ type parsed struct {
 	path    string // repo-relative, slash-separated
 	imports []lang.RawImport
 	err     error
+}
+
+// workspacesOf converts the resolver's absolute workspace paths to
+// repo-relative ones. A workspace outside the repo root is dropped rather than
+// emitted with a "../" path, which nothing downstream could match against a
+// file node.
+func workspacesOf(r *resolve.Resolver, root string) []Workspace {
+	if r == nil {
+		return nil
+	}
+	var out []Workspace
+	for _, w := range r.Workspaces() {
+		rel, err := filepath.Rel(root, w.Dir)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		ws := Workspace{Name: w.Name, Dir: filepath.ToSlash(rel)}
+		if ws.Dir == "." {
+			ws.Dir = ""
+		}
+		if w.Entry != "" {
+			if e, err := filepath.Rel(root, w.Entry); err == nil && !strings.HasPrefix(e, "..") {
+				ws.Entry = filepath.ToSlash(e)
+			}
+		}
+		out = append(out, ws)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Dir < out[j].Dir })
+	return out
 }
 
 // Run scans the repo rooted at dir with default options.
@@ -193,6 +241,7 @@ func RunWith(dir string, opts Options) (*Result, error) {
 		AliasesLoaded:   resolver.HasAliases(),
 		ResolvedVia:     map[string]int{},
 		ManifestEntries: res0Manifest,
+		Workspaces:      workspacesOf(resolver, root),
 	}
 
 	// Every file becomes a node before any edge is added, so an edge can never
