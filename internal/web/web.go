@@ -63,6 +63,11 @@ type Payload struct {
 	Truncated int            `json:"truncated"`
 	Rules     map[string]int `json:"rules"`
 	Warnings  []string       `json:"warnings"`
+
+	// Width and Height bound the laid-out graph so the viewer can fit it to the
+	// screen without measuring every node itself.
+	Width  int `json:"width"`
+	Height int `json:"height"`
 }
 
 // maxNodes caps what is drawn.
@@ -134,7 +139,7 @@ func Build(res *scan.Result, includePackages bool) *Payload {
 	}
 
 	depth := layers(g, ids)
-	pos := position(depth, ids, label)
+	pos, width, height := position(depth, ids, label)
 
 	inSet := make(map[string]bool, len(ids))
 	for _, id := range ids {
@@ -145,6 +150,8 @@ func Build(res *scan.Result, includePackages bool) *Payload {
 		Root:      res.Root,
 		Truncated: truncated,
 		Rules:     res.ResolvedVia,
+		Width:     width,
+		Height:    height,
 	}
 	for _, id := range ids {
 		n := g.Nodes[id]

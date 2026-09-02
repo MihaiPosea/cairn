@@ -72,7 +72,7 @@ func TestPayloadIsValidForAnEmptyRepo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render failed on an empty repo: %v", err)
 	}
-	if !strings.Contains(html, "<svg") {
+	if !strings.Contains(html, "<canvas") {
 		t.Error("the page should still render its shell with no nodes")
 	}
 }

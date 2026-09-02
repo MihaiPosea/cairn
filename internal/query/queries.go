@@ -120,6 +120,14 @@ func entryReason(p string) string {
 		return "Next.js runtime hook"
 	case strings.HasSuffix(stem, ".config") || strings.HasSuffix(stem, ".setup"):
 		return "config file, loaded by tooling"
+	case stem == "setupTests" || stem == "setup-tests" || stem == "vitest.setup" || stem == "jest.setup":
+		return "test setup, loaded by the runner"
+	case top == "public" || top == "static":
+		return "served as a static asset"
+	case stem == "index" || strings.HasPrefix(stem, "index-"):
+		return "an index file, a conventional entry point"
+	case stem == "service-worker" || stem == "sw" || stem == "serviceWorker":
+		return "service worker, registered by URL"
 	case strings.Contains(base, ".test.") || strings.Contains(base, ".spec."):
 		return "test file"
 	case strings.Contains(p, "__tests__/") || strings.Contains(p, "/e2e/"):

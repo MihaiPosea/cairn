@@ -8,216 +8,474 @@
   :root {
     --paper:#F7F8F7; --surface:#fff; --surface-2:#EFF2F1; --ink:#141A19;
     --ink-soft:#4E5957; --rule:#DCE2E0; --accent:#146B62; --accent-soft:#E2EFEC;
-    --warn:#8F5614; --crit:#A32B22; --pkg:#5B4A8A; --pkg-soft:#ECE7F5;
+    --crit:#A32B22; --pkg:#5B4A8A; --pkg-soft:#ECE7F5; --edge:#C9D2CF; --edge-hot:#146B62;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --paper:#101413; --surface:#171D1C; --surface-2:#1E2625; --ink:#E7ECEA;
       --ink-soft:#97A3A0; --rule:#2B3432; --accent:#5CC4B6; --accent-soft:#14302C;
-      --warn:#D9A05B; --crit:#E88376; --pkg:#B3A3DE; --pkg-soft:#241F33;
+      --crit:#E88376; --pkg:#B3A3DE; --pkg-soft:#241F33; --edge:#2B3432; --edge-hot:#5CC4B6;
     }
   }
   * { box-sizing:border-box; }
-  html,body { height:100%; margin:0; }
+  html,body { height:100%; margin:0; overflow:hidden; }
   body {
     background:var(--paper); color:var(--ink); display:flex; flex-direction:column;
-    font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
   }
   header {
-    display:flex; align-items:baseline; gap:20px; flex-wrap:wrap;
-    padding:14px 20px; border-bottom:1px solid var(--rule); background:var(--surface);
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+    padding:10px 16px; border-bottom:1px solid var(--rule); background:var(--surface);
+    flex-shrink:0;
   }
-  h1 { font-size:15px; margin:0; font-weight:650; letter-spacing:-0.01em; }
-  .path { font:12px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink-soft); }
-  .stats { display:flex; gap:18px; margin-left:auto; flex-wrap:wrap;
-           font:12px ui-monospace,Menlo,monospace; color:var(--ink-soft); }
+  .brand { font-weight:700; font-size:14px; letter-spacing:-0.01em; }
+  .repo {
+    font:12px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink-soft);
+    max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; direction:rtl;
+  }
+  .stats { display:flex; gap:14px; margin-left:auto; flex-wrap:wrap;
+           font:11px ui-monospace,Menlo,monospace; color:var(--ink-soft); }
   .stats b { color:var(--ink); font-weight:600; }
+  .stats .warn b { color:var(--crit); }
   main { flex:1; display:flex; min-height:0; }
-  #canvas { flex:1; position:relative; overflow:hidden; cursor:grab; }
-  #canvas.drag { cursor:grabbing; }
-  svg { width:100%; height:100%; display:block; }
-  .edge { stroke:var(--rule); stroke-width:1; fill:none; }
-  .edge.type-only { stroke-dasharray:3 3; }
-  .edge.hot { stroke:var(--accent); stroke-width:1.8; }
-  .node rect { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; rx:3; }
-  .node.package rect { fill:var(--pkg-soft); stroke:var(--pkg); }
-  .node.entry rect { stroke:var(--accent); stroke-width:1.8; }
-  .node.dead rect { fill:transparent; stroke:var(--crit); stroke-dasharray:4 3; }
-  .node.sel rect { stroke:var(--accent); stroke-width:2.4; fill:var(--accent-soft); }
-  .node.dim { opacity:.16; }
-  .node text { font:11px ui-monospace,Menlo,monospace; fill:var(--ink); pointer-events:none; }
-  .node { cursor:pointer; }
-  aside {
-    width:340px; border-left:1px solid var(--rule); background:var(--surface);
-    padding:18px 20px; overflow:auto; flex-shrink:0;
+  #stage { flex:1; position:relative; overflow:hidden; cursor:grab; }
+  #stage.drag { cursor:grabbing; }
+  #c { display:block; position:absolute; inset:0; }
+  #mini {
+    position:absolute; right:12px; bottom:12px; width:190px; height:120px;
+    border:1px solid var(--rule); background:var(--surface); opacity:.94; cursor:pointer;
+    border-radius:3px;
   }
-  aside h2 { font:600 13px/1.3 ui-sans-serif,sans-serif; margin:0 0 4px;
-             word-break:break-all; letter-spacing:-0.01em; }
-  .kind { font:11px ui-monospace,Menlo,monospace; color:var(--ink-soft);
-          text-transform:uppercase; letter-spacing:.08em; }
-  .row { display:flex; justify-content:space-between; padding:6px 0;
-         border-bottom:1px solid var(--rule); font:12px ui-monospace,Menlo,monospace; }
+  aside {
+    width:320px; border-left:1px solid var(--rule); background:var(--surface);
+    padding:16px 18px; overflow:auto; flex-shrink:0;
+  }
+  aside h2 { font:600 13px/1.35 ui-sans-serif,sans-serif; margin:0 0 2px; word-break:break-all; }
+  .dir { font:11px ui-monospace,Menlo,monospace; color:var(--ink-soft); word-break:break-all; margin-bottom:10px; }
+  .kind { font:10px ui-monospace,Menlo,monospace; color:var(--ink-soft);
+          text-transform:uppercase; letter-spacing:.09em; }
+  .row { display:flex; justify-content:space-between; padding:5px 0;
+         border-bottom:1px solid var(--rule); font:11px ui-monospace,Menlo,monospace; }
   .row span:last-child { color:var(--ink); font-weight:600; }
   .row span:first-child { color:var(--ink-soft); }
-  h3 { font:600 11px/1 ui-monospace,Menlo,monospace; text-transform:uppercase;
-       letter-spacing:.08em; color:var(--ink-soft); margin:20px 0 8px; }
+  h3 { font:600 10px/1 ui-monospace,Menlo,monospace; text-transform:uppercase;
+       letter-spacing:.09em; color:var(--ink-soft); margin:16px 0 6px; }
   ul { list-style:none; margin:0; padding:0; }
-  li { font:12px ui-monospace,Menlo,monospace; padding:3px 0; color:var(--ink);
+  li { font:11px ui-monospace,Menlo,monospace; padding:3px 0; color:var(--ink);
        cursor:pointer; word-break:break-all; }
   li:hover { color:var(--accent); }
+  li .d { color:var(--ink-soft); }
   .note { background:var(--accent-soft); border-left:2px solid var(--accent);
-          padding:8px 10px; margin:12px 0 0; font-size:12px; color:var(--ink-soft); }
+          padding:7px 9px; margin:10px 0 0; font-size:11px; color:var(--ink-soft); }
   .note.bad { background:transparent; border-color:var(--crit); color:var(--crit); }
   .empty { color:var(--ink-soft); font-size:12px; }
-  input {
-    font:12px ui-monospace,Menlo,monospace; padding:5px 8px; border:1px solid var(--rule);
-    border-radius:3px; background:var(--paper); color:var(--ink); width:180px;
+  .empty b { color:var(--ink); display:block; margin-bottom:8px; font-size:13px; }
+  input, button {
+    font:11px ui-monospace,Menlo,monospace; padding:4px 8px; border:1px solid var(--rule);
+    border-radius:3px; background:var(--paper); color:var(--ink);
   }
-  .legend { display:flex; gap:14px; padding:8px 20px; border-top:1px solid var(--rule);
-            background:var(--surface); font:11px ui-monospace,Menlo,monospace; color:var(--ink-soft); }
-  .sw { display:inline-block; width:9px; height:9px; margin-right:5px; border:1.2px solid var(--rule); }
+  input { width:170px; }
+  button { cursor:pointer; }
+  button:hover { border-color:var(--accent); color:var(--accent); }
+  .legend { display:flex; gap:12px; padding:6px 16px; border-top:1px solid var(--rule);
+            background:var(--surface); font:10px ui-monospace,Menlo,monospace;
+            color:var(--ink-soft); flex-shrink:0; align-items:center; }
+  .sw { display:inline-block; width:8px; height:8px; margin-right:4px; border:1.2px solid var(--rule);
+        vertical-align:-1px; }
   .sw.entry { border-color:var(--accent); }
   .sw.dead { border-color:var(--crit); border-style:dashed; }
   .sw.pkg { border-color:var(--pkg); background:var(--pkg-soft); }
+  .hint { margin-left:auto; }
 </style>
 </head>
 <body>
 <header>
-  <div>
-    <h1>cairn</h1>
-    <div class="path">{{.Root}}</div>
-  </div>
-  <input id="q" placeholder="filter files" autocomplete="off">
+  <span class="brand">cairn</span>
+  <span class="repo" id="repo" title="{{.Root}}">{{.Root}}</span>
+  <input id="q" placeholder="filter" autocomplete="off">
+  <button id="fit">fit</button>
   <div class="stats" id="stats"></div>
 </header>
 <main>
-  <div id="canvas"><svg id="svg"><g id="viewport"></g></svg></div>
-  <aside id="panel"><p class="empty">Click any node.<br><br>Drag to pan, scroll to zoom.</p></aside>
+  <div id="stage"><canvas id="c"></canvas><canvas id="mini"></canvas></div>
+  <aside id="panel"></aside>
 </main>
 <div class="legend">
   <span><i class="sw entry"></i>entry point</span>
   <span><i class="sw"></i>file</span>
   <span><i class="sw pkg"></i>package</span>
   <span><i class="sw dead"></i>nothing reaches it</span>
-  <span id="trunc"></span>
+  <span class="hint" id="hint">drag to pan · scroll to zoom · click a node</span>
 </div>
 
 <script>
 const DATA = {{.Data}};
 
-const byId = new Map(DATA.nodes.map(n => [n.id, n]));
+// ── model ───────────────────────────────────────────────────────────────────
+const NW = 220, NH = 20;                    // node box, in world units
+const nodes = DATA.nodes;
+const byId = new Map(nodes.map(n => [n.id, n]));
 const out = new Map(), inc = new Map();
 for (const e of DATA.edges) {
-  if (!out.has(e.from)) out.set(e.from, []);
-  if (!inc.has(e.to)) inc.set(e.to, []);
-  out.get(e.from).push(e);
-  inc.get(e.to).push(e);
+  if (!byId.has(e.from) || !byId.has(e.to)) continue;
+  (out.get(e.from) || out.set(e.from, []).get(e.from)).push(e);
+  (inc.get(e.to) || inc.set(e.to, []).get(e.to)).push(e);
 }
 
-const svg = document.getElementById('svg');
-const vp = document.getElementById('viewport');
-const NS = 'http://www.w3.org/2000/svg';
-const W = 210, H = 20;
-
-// Edges are drawn first so nodes sit on top of them.
-const edgeEls = new Map();
-for (const e of DATA.edges) {
-  const a = byId.get(e.from), b = byId.get(e.to);
-  if (!a || !b) continue;
-  const p = document.createElementNS(NS, 'path');
-  const x1 = a.x + W, y1 = a.y + H / 2, x2 = b.x, y2 = b.y + H / 2;
-  const mid = (x1 + x2) / 2;
-  p.setAttribute('d', 'M' + x1 + ',' + y1 + ' C' + mid + ',' + y1 + ' ' + mid + ',' + y2 + ' ' + x2 + ',' + y2);
-  p.setAttribute('class', 'edge ' + e.kind);
-  vp.appendChild(p);
-  const key = e.from + ' ' + e.to;
-  if (!edgeEls.has(key)) edgeEls.set(key, []);
-  edgeEls.get(key).push(p);
+// Split each label once, so the renderer and the panel both get a filename and
+// a directory without doing string work per frame.
+for (const n of nodes) {
+  const i = n.label.lastIndexOf('/');
+  n.base = i < 0 ? n.label : n.label.slice(i + 1);
+  n.dir = i < 0 ? '' : n.label.slice(0, i + 1);
 }
 
-const nodeEls = new Map();
-for (const n of DATA.nodes) {
-  const g = document.createElementNS(NS, 'g');
-  let cls = 'node ' + n.kind;
-  if (n.entry) cls += ' entry';
-  if (n.dead) cls += ' dead';
-  g.setAttribute('class', cls);
-  g.setAttribute('transform', 'translate(' + n.x + ',' + n.y + ')');
+// Weight drives visual emphasis: the most-depended-on nodes should be findable
+// without reading every box. Normalised so it does not depend on repo size.
+let maxBlast = 1;
+for (const n of nodes) maxBlast = Math.max(maxBlast, n.blast);
+for (const n of nodes) n.w = Math.min(1, Math.log1p(n.blast) / Math.log1p(maxBlast));
 
-  const r = document.createElementNS(NS, 'rect');
-  r.setAttribute('width', W); r.setAttribute('height', H);
-  g.appendChild(r);
+// ── canvas ──────────────────────────────────────────────────────────────────
+const stage = document.getElementById('stage');
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d', { alpha: false });
+const mini = document.getElementById('mini');
+const mctx = mini.getContext('2d');
 
-  const t = document.createElementNS(NS, 'text');
-  t.setAttribute('x', 7); t.setAttribute('y', 14);
-  t.textContent = n.label.length > 30 ? '...' + n.label.slice(-27) : n.label;
-  g.appendChild(t);
-
-  const title = document.createElementNS(NS, 'title');
-  title.textContent = n.label;
-  g.appendChild(title);
-
-  g.addEventListener('click', ev => { ev.stopPropagation(); select(n.id); });
-  vp.appendChild(g);
-  nodeEls.set(n.id, g);
+let dpr = 1, VW = 0, VH = 0;
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const r = stage.getBoundingClientRect();
+  VW = r.width; VH = r.height;
+  cv.width = Math.round(VW * dpr); cv.height = Math.round(VH * dpr);
+  cv.style.width = VW + 'px'; cv.style.height = VH + 'px';
+  const mr = mini.getBoundingClientRect();
+  mini.width = Math.round(mr.width * dpr); mini.height = Math.round(mr.height * dpr);
+  draw();
 }
 
-let tx = 60, ty = 40, scale = 1;
-function apply() { vp.setAttribute('transform', 'translate(' + tx + ',' + ty + ') scale(' + scale + ')'); }
-apply();
+// view transform: world -> screen is  s * p + t
+let tx = 0, ty = 0, s = 1;
+// Fit to height, not to both.
+//
+// A layered graph is wide and short by construction, so fitting both axes
+// shrinks it to an unreadable band across the middle of an empty screen — the
+// 14,000x1,100 layout of a 1,000-node repo lands at 8% zoom. Filling the height
+// and panning sideways keeps the boxes legible and matches how the graph reads:
+// left to right, entry points to leaves.
+function fit() {
+  const w = Math.max(DATA.width || 1000, 1) + NW;
+  const h = Math.max(DATA.height || 1000, 1) + NH;
+  const pad = 30;
 
-const canvas = document.getElementById('canvas');
-let dragging = false, lastX = 0, lastY = 0;
-canvas.addEventListener('mousedown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; canvas.classList.add('drag'); });
-addEventListener('mouseup', () => { dragging = false; canvas.classList.remove('drag'); });
-addEventListener('mousemove', e => {
-  if (!dragging) return;
-  tx += e.clientX - lastX; ty += e.clientY - lastY;
-  lastX = e.clientX; lastY = e.clientY; apply();
+  const byHeight = (VH - pad * 2) / h;
+  const byBoth = Math.min((VW - pad * 2) / w, byHeight);
+
+  // If the graph is nearly square it fits entirely; if it is wide, height wins.
+  s = w / h > (VW / VH) * 1.3 ? byHeight : byBoth;
+  s = Math.max(0.03, Math.min(s, 1.2));
+
+  tx = w * s <= VW - pad * 2 ? (VW - w * s) / 2 : pad;
+  ty = (VH - h * s) / 2;
+  draw();
+}
+
+let raf = 0;
+function draw() { if (!raf) raf = requestAnimationFrame(render); }
+
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+let C = {};
+function readColors() {
+  C = {
+    paper: css('--paper'), surface: css('--surface'), surface2: css('--surface-2'),
+    ink: css('--ink'), inkSoft: css('--ink-soft'), rule: css('--rule'),
+    accent: css('--accent'), accentSoft: css('--accent-soft'), crit: css('--crit'),
+    pkg: css('--pkg'), pkgSoft: css('--pkg-soft'), edge: css('--edge'), edgeHot: css('--edge-hot'),
+  };
+}
+
+let selected = null, hovered = null, hotSet = null, filter = '';
+
+function render() {
+  raf = 0;
+  ctx.save();
+  ctx.scale(dpr, dpr);
+  ctx.fillStyle = C.paper;
+  ctx.fillRect(0, 0, VW, VH);
+
+  // Visible world rectangle, with a margin so edges entering from off-screen
+  // are still drawn.
+  const m = 200;
+  const x0 = (-tx) / s - m, y0 = (-ty) / s - m;
+  const x1 = (VW - tx) / s + m, y1 = (VH - ty) / s + m;
+
+  ctx.translate(tx, ty);
+  ctx.scale(s, s);
+
+  // Level of detail. Below these thresholds the work is skipped entirely
+  // rather than drawn too small to read — that is the whole reason a 1,000
+  // node graph can stay at 60fps while panning.
+  const showText = s > 0.42;
+  // Edges are hidden in the overview rather than drawn faintly. Four thousand
+  // lines at 10% zoom is a grey wash that hides the nodes and answers nothing;
+  // the overview's job is "where is everything", and edges only start meaning
+  // something once you can tell which box they touch.
+  const showEdges = s > 0.28 || !!selected;
+  const curved = s > 0.34;
+
+  if (showEdges) drawEdges(x0, y0, x1, y1, curved);
+  drawNodes(x0, y0, x1, y1, showText);
+
+  ctx.restore();
+  drawMini();
+}
+
+function drawEdges(x0, y0, x1, y1, curved) {
+  ctx.lineWidth = 1 / s;
+  ctx.strokeStyle = C.edge;
+  ctx.globalAlpha = selected ? 0.16 : 0.34;
+  ctx.beginPath();
+  let hot = null;
+
+  for (const e of DATA.edges) {
+    const a = byId.get(e.from), b = byId.get(e.to);
+    if (!a || !b) continue;
+    // Cull by the edge's bounding box.
+    if (Math.max(a.x, b.x) + NW < x0 || Math.min(a.x, b.x) > x1) continue;
+    if (Math.max(a.y, b.y) + NH < y0 || Math.min(a.y, b.y) > y1) continue;
+
+    const isHot = selected && (hotSet.has(e.from) && hotSet.has(e.to));
+    if (isHot) { (hot || (hot = [])).push([a, b]); continue; }
+
+    const ax = a.x + NW, ay = a.y + NH / 2, bx = b.x, by = b.y + NH / 2;
+    ctx.moveTo(ax, ay);
+    if (curved) {
+      const mx = (ax + bx) / 2;
+      ctx.bezierCurveTo(mx, ay, mx, by, bx, by);
+    } else {
+      ctx.lineTo(bx, by);
+    }
+  }
+  ctx.stroke();
+
+  if (hot) {
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = C.edgeHot;
+    ctx.lineWidth = 1.6 / s;
+    ctx.beginPath();
+    for (const [a, b] of hot) {
+      const ax = a.x + NW, ay = a.y + NH / 2, bx = b.x, by = b.y + NH / 2;
+      ctx.moveTo(ax, ay);
+      const mx = (ax + bx) / 2;
+      ctx.bezierCurveTo(mx, ay, mx, by, bx, by);
+    }
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawNodes(x0, y0, x1, y1, showText) {
+  ctx.font = '11px ui-monospace, Menlo, monospace';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 1 / s;
+
+  for (const n of nodes) {
+    if (n.x + NW < x0 || n.x > x1 || n.y + NH < y0 || n.y > y1) continue;
+
+    const dim = (selected && !hotSet.has(n.id)) || (filter && !n.label.toLowerCase().includes(filter));
+    ctx.globalAlpha = dim ? 0.14 : 1;
+
+    const isSel = n.id === selected, isHover = n.id === hovered;
+    ctx.fillStyle = n.kind === 'package' ? C.pkgSoft : (isSel ? C.accentSoft : C.surface);
+    ctx.strokeStyle = isSel || isHover ? C.accent
+      : n.dead ? C.crit
+      : n.entry ? C.accent
+      : n.kind === 'package' ? C.pkg
+      : C.rule;
+
+    ctx.beginPath();
+    ctx.rect(n.x, n.y, NW, NH);
+    ctx.fill();
+
+    if (n.dead) { ctx.setLineDash([4 / s, 3 / s]); }
+    ctx.lineWidth = (isSel ? 2.4 : isHover ? 1.8 : n.entry || n.dead ? 1.5 : 1) / s;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // A weight bar rather than a number: the eye finds the load-bearing files
+    // without reading anything.
+    if (n.w > 0.05) {
+      ctx.fillStyle = C.accent;
+      ctx.globalAlpha = (dim ? 0.14 : 1) * (0.18 + n.w * 0.55);
+      ctx.fillRect(n.x, n.y, 3, NH);
+      ctx.globalAlpha = dim ? 0.14 : 1;
+    }
+
+    if (showText) {
+      // Filename first and at full contrast; the directory is dimmed and only
+      // drawn if it fits. Truncating from the left hid exactly the part that
+      // tells two same-named files apart.
+      //
+      // The truncated string is computed once per node and cached. Measuring it
+      // per frame meant a measureText call per character per visible node —
+      // about 27,000 of them a frame, which froze the tab outright while
+      // panning. Neither the font nor the box width ever changes, so the answer
+      // cannot either.
+      if (n.text === undefined) layoutText(n);
+      ctx.fillStyle = C.ink;
+      ctx.fillText(n.base, n.x + 8, n.y + NH / 2);
+      if (n.text) {
+        ctx.fillStyle = C.inkSoft;
+        ctx.fillText(n.text, n.x + n.textX, n.y + NH / 2);
+      }
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// layoutText resolves a node's drawn strings once and stores them on the node.
+function layoutText(n) {
+  const bw = ctx.measureText(n.base).width;
+  n.textX = 8 + bw + 6;
+  const room = NW - 8 - n.textX;
+  if (!n.dir || room < 24) { n.text = ''; return; }
+
+  if (ctx.measureText(n.dir).width <= room) { n.text = n.dir; return; }
+
+  // Binary search the cut point rather than trimming one character at a time.
+  let lo = 0, hi = n.dir.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (ctx.measureText('…' + n.dir.slice(mid)).width <= room) hi = mid; else lo = mid + 1;
+  }
+  n.text = lo >= n.dir.length ? '' : '…' + n.dir.slice(lo);
+}
+
+function drawMini() {
+  const w = mini.width / dpr, h = mini.height / dpr;
+  mctx.save();
+  mctx.scale(dpr, dpr);
+  mctx.fillStyle = C.surface;
+  mctx.fillRect(0, 0, w, h);
+
+  const gw = Math.max(DATA.width || 1, 1) + NW, gh = Math.max(DATA.height || 1, 1) + NH;
+  const k = Math.min(w / gw, h / gh) * 0.92;
+  const ox = (w - gw * k) / 2, oy = (h - gh * k) / 2;
+
+  mctx.fillStyle = C.rule;
+  for (const n of nodes) {
+    mctx.fillRect(ox + n.x * k, oy + n.y * k, Math.max(1, NW * k), Math.max(1, NH * k));
+  }
+  if (selected) {
+    const n = byId.get(selected);
+    if (n) {
+      mctx.fillStyle = C.accent;
+      mctx.fillRect(ox + n.x * k - 1, oy + n.y * k - 1, Math.max(3, NW * k), Math.max(3, NH * k));
+    }
+  }
+  // Viewport rectangle.
+  mctx.strokeStyle = C.accent;
+  mctx.lineWidth = 1;
+  mctx.strokeRect(ox + (-tx / s) * k, oy + (-ty / s) * k, (VW / s) * k, (VH / s) * k);
+  mctx.restore();
+}
+
+// ── interaction ─────────────────────────────────────────────────────────────
+function worldAt(clientX, clientY) {
+  const r = stage.getBoundingClientRect();
+  return [(clientX - r.left - tx) / s, (clientY - r.top - ty) / s];
+}
+
+function nodeAt(wx, wy) {
+  // Reverse order so the visually topmost wins; the list is small once culled.
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    if (wx >= n.x && wx <= n.x + NW && wy >= n.y && wy <= n.y + NH) return n;
+  }
+  return null;
+}
+
+let dragging = false, moved = false, lx = 0, ly = 0;
+stage.addEventListener('mousedown', e => {
+  dragging = true; moved = false; lx = e.clientX; ly = e.clientY;
+  stage.classList.add('drag');
 });
-canvas.addEventListener('wheel', e => {
-  e.preventDefault();
-  const f = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-  const r = canvas.getBoundingClientRect();
-  const mx = e.clientX - r.left, my = e.clientY - r.top;
-  tx = mx - (mx - tx) * f; ty = my - (my - ty) * f;
-  scale = Math.max(0.05, Math.min(4, scale * f));
-  apply();
-}, { passive: false });
-canvas.addEventListener('click', () => select(null));
+addEventListener('mouseup', () => { dragging = false; stage.classList.remove('drag'); });
+addEventListener('mousemove', e => {
+  if (dragging) {
+    const dx = e.clientX - lx, dy = e.clientY - ly;
+    if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+    tx += dx; ty += dy; lx = e.clientX; ly = e.clientY;
+    draw();
+    return;
+  }
+  const [wx, wy] = worldAt(e.clientX, e.clientY);
+  const n = nodeAt(wx, wy);
+  const id = n ? n.id : null;
+  if (id !== hovered) { hovered = id; stage.style.cursor = id ? 'pointer' : ''; draw(); }
+});
 
-// Everything that transitively depends on a node: its blast radius.
+stage.addEventListener('click', e => {
+  if (moved) return;
+  const [wx, wy] = worldAt(e.clientX, e.clientY);
+  const n = nodeAt(wx, wy);
+  select(n ? n.id : null);
+});
+
+stage.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = stage.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  const f = Math.exp(-e.deltaY * 0.0015);
+  const ns = Math.max(0.02, Math.min(3, s * f));
+  tx = mx - (mx - tx) * (ns / s);
+  ty = my - (my - ty) * (ns / s);
+  s = ns;
+  draw();
+}, { passive: false });
+
+mini.addEventListener('click', e => {
+  e.stopPropagation();
+  const r = mini.getBoundingClientRect();
+  const gw = Math.max(DATA.width || 1, 1) + NW, gh = Math.max(DATA.height || 1, 1) + NH;
+  const k = Math.min(r.width / gw, r.height / gh) * 0.92;
+  const ox = (r.width - gw * k) / 2, oy = (r.height - gh * k) / 2;
+  const wx = (e.clientX - r.left - ox) / k, wy = (e.clientY - r.top - oy) / k;
+  tx = VW / 2 - wx * s; ty = VH / 2 - wy * s;
+  draw();
+});
+
+document.getElementById('fit').addEventListener('click', fit);
+addEventListener('keydown', e => {
+  if (e.key === 'Escape') select(null);
+  if (e.key === 'f' && document.activeElement !== document.getElementById('q')) fit();
+});
+
+document.getElementById('q').addEventListener('input', e => {
+  filter = e.target.value.toLowerCase();
+  draw();
+});
+
+// Everything that transitively depends on a node, plus what it imports.
 function upstream(id) {
-  const seen = new Set([id]); const q = [id];
+  const seen = new Set([id]);
+  const q = [id];
   while (q.length) {
     const cur = q.shift();
     for (const e of (inc.get(cur) || [])) {
       if (!seen.has(e.from)) { seen.add(e.from); q.push(e.from); }
     }
   }
+  for (const e of (out.get(id) || [])) seen.add(e.to);
   return seen;
 }
 
 function select(id) {
-  for (const el of nodeEls.values()) el.classList.remove('sel', 'dim');
-  for (const list of edgeEls.values()) for (const p of list) p.classList.remove('hot');
-
-  if (!id) { renderPanel(null); return; }
-
-  const hot = upstream(id);
-  const direct = new Set((out.get(id) || []).map(e => e.to));
-  for (const [nid, el] of nodeEls) {
-    if (nid === id) el.classList.add('sel');
-    else if (!hot.has(nid) && !direct.has(nid)) el.classList.add('dim');
-  }
-  for (const [key, list] of edgeEls) {
-    const parts = key.split(' ');
-    const from = parts[0], to = parts[1];
-    if ((hot.has(from) && hot.has(to)) || from === id || to === id) {
-      for (const p of list) p.classList.add('hot');
-    }
-  }
-  renderPanel(byId.get(id));
+  selected = id;
+  hotSet = id ? upstream(id) : null;
+  renderPanel(id ? byId.get(id) : null);
+  draw();
 }
 
 function bytes(b) {
@@ -227,69 +485,80 @@ function bytes(b) {
   while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
   return b.toFixed(i ? 1 : 0) + ' ' + u[i];
 }
-
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+function esc(x) {
+  return String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
 function renderPanel(n) {
   const panel = document.getElementById('panel');
   if (!n) {
-    panel.innerHTML = '<p class="empty">Click any node.<br><br>Drag to pan, scroll to zoom.</p>';
+    const top = nodes.slice().sort((a, b) => b.blast - a.blast).slice(0, 8);
+    panel.innerHTML =
+      '<p class="empty"><b>Click any node.</b>Or start with the files the most others depend on:</p>' +
+      '<h3>most depended on</h3><ul>' +
+      top.map(t => `<li data-go="${esc(t.id)}"><span class="d">${esc(t.dir)}</span>${esc(t.base)}` +
+        ` <span class="d">${t.blast}</span></li>`).join('') + '</ul>';
+    wire(panel);
     return;
   }
-  const deps = out.get(n.id) || [];
-  const dependents = inc.get(n.id) || [];
+
+  const deps = out.get(n.id) || [], dependents = inc.get(n.id) || [];
   const size = bytes(n.bytes);
 
-  let html = '<div class="kind">' + esc(n.kind) + '</div><h2>' + esc(n.label) + '</h2>';
-  html += '<div class="row"><span>breaks if changed</span><span>' + n.blast + '</span></div>';
-  html += '<div class="row"><span>imports</span><span>' + deps.length + '</span></div>';
-  html += '<div class="row"><span>imported by</span><span>' + dependents.length + '</span></div>';
-  if (size) html += '<div class="row"><span>installed size</span><span>' + size + '</span></div>';
-  if (n.note) html += '<div class="note' + (n.dead ? ' bad' : '') + '">' + esc(n.note) + '</div>';
+  let html = `<div class="kind">${esc(n.kind)}</div><h2>${esc(n.base)}</h2>`;
+  if (n.dir) html += `<div class="dir">${esc(n.dir)}</div>`;
+  html += `<div class="row"><span>breaks if changed</span><span>${n.blast}</span></div>`;
+  html += `<div class="row"><span>imports</span><span>${deps.length}</span></div>`;
+  html += `<div class="row"><span>imported by</span><span>${dependents.length}</span></div>`;
+  if (size) html += `<div class="row"><span>installed size</span><span>${size}</span></div>`;
+  if (n.note) html += `<div class="note${n.dead ? ' bad' : ''}">${esc(n.note)}</div>`;
 
-  if (dependents.length) {
-    html += '<h3>imported by</h3><ul>';
-    for (const e of dependents.slice(0, 40)) {
-      const t = byId.get(e.from);
-      html += '<li data-go="' + esc(e.from) + '">' + esc(t ? t.label : e.from) + (e.line ? ':' + e.line : '') + '</li>';
-    }
-    html += '</ul>';
-  }
-  if (deps.length) {
-    html += '<h3>imports</h3><ul>';
-    for (const e of deps.slice(0, 40)) {
-      const t = byId.get(e.to);
-      html += '<li data-go="' + esc(e.to) + '">' + esc(t ? t.label : e.to) + '</li>';
-    }
-    html += '</ul>';
-  }
+  const list = (title, edges, key) => {
+    if (!edges.length) return '';
+    return `<h3>${title} (${edges.length})</h3><ul>` + edges.slice(0, 60).map(e => {
+      const t = byId.get(e[key]);
+      const label = t ? `<span class="d">${esc(t.dir)}</span>${esc(t.base)}` : esc(e[key]);
+      return `<li data-go="${esc(e[key])}">${label}</li>`;
+    }).join('') + '</ul>';
+  };
+  html += list('imported by', dependents, 'from');
+  html += list('imports', deps, 'to');
 
   panel.innerHTML = html;
+  wire(panel);
+}
+
+function wire(panel) {
   for (const el of panel.querySelectorAll('[data-go]')) {
-    el.addEventListener('click', () => select(el.getAttribute('data-go')));
+    el.addEventListener('click', () => {
+      const id = el.getAttribute('data-go');
+      const n = byId.get(id);
+      if (n) { tx = VW / 2 - (n.x + NW / 2) * s; ty = VH / 2 - (n.y + NH / 2) * s; }
+      select(id);
+    });
   }
 }
 
-document.getElementById('q').addEventListener('input', e => {
-  const q = e.target.value.toLowerCase();
-  for (const [id, el] of nodeEls) {
-    const n = byId.get(id);
-    el.classList.toggle('dim', q !== '' && !n.label.toLowerCase().includes(q));
-  }
-});
-
-const s = DATA.stats;
+// ── boot ────────────────────────────────────────────────────────────────────
+const st = DATA.stats;
 document.getElementById('stats').innerHTML = [
-  ['files', s.files], ['imports', s.imports], ['packages', s.packages],
-  ['unresolved', s.unresolved], ['cycles', s.cycles], ['unreachable', s.dead]
-].map(p => '<span>' + p[0] + ' <b>' + p[1] + '</b></span>').join('');
+  ['files', st.files, false], ['imports', st.imports, false], ['packages', st.packages, false],
+  ['unresolved', st.unresolved, st.unresolved > 0],
+  ['cycles', st.cycles, st.cycles > 0],
+  ['unreachable', st.dead, st.dead > 0],
+].map(([k, v, warn]) => `<span class="${warn ? 'warn' : ''}">${k} <b>${v}</b></span>`).join('');
 
 if (DATA.truncated) {
-  document.getElementById('trunc').textContent =
-    'showing the ' + DATA.nodes.length + ' most-depended-on nodes, ' + DATA.truncated + ' not drawn';
+  document.getElementById('hint').textContent =
+    `showing the ${nodes.length} most-depended-on of ${nodes.length + DATA.truncated} nodes`;
 }
+
+readColors();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { readColors(); draw(); });
+addEventListener('resize', resize);
+resize();
+fit();
+renderPanel(null);
 </script>
 </body>
 </html>

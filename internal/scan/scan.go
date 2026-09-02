@@ -86,8 +86,8 @@ type Result struct {
 	// CacheHits and CacheMisses count files served from the parse cache.
 	CacheHits, CacheMisses int
 
-	// ManifestEntries are entry points declared by the repo's own
-	// package.json, which is the only signal a library gives.
+	// ManifestEntries are entry points declared outside the code: the repo's
+	// own package.json, and the script tags of any HTML document.
 	ManifestEntries []string
 
 	// ResolvedVia counts how many specifiers each resolution rule handled.
@@ -175,6 +175,10 @@ func RunWith(dir string, opts Options) (*Result, error) {
 	}
 
 	res0Manifest := pkgs.ManifestEntries(root)
+	// An HTML document names its entry script directly, which is how every
+	// Vite app declares one. Without this, that file and everything only it
+	// reaches are reported unreachable.
+	res0Manifest = append(res0Manifest, htmlEntries(root, findHTML(root))...)
 
 	// Aliases declared in a bundler config rather than tsconfig. Many projects
 	// mirror them into tsconfig for the editor; the ones that do not would
