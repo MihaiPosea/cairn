@@ -120,3 +120,37 @@ func TestDepthIncreasesAlongAChain(t *testing.T) {
 		t.Errorf("depth should increase along the chain, got %v", depth)
 	}
 }
+
+// Longest-path depth on a real repo reaches into the hundreds — excalidraw hit
+// 648 — because it measures the longest chain that can be strung together, not
+// how deep anything is. Those numbers head the columns in the viewer, so they
+// have to be ranks: consecutive from zero, with no empty levels between.
+func TestDepthsAreConsecutiveRanks(t *testing.T) {
+	// A diamond with one long side. b is reachable in one hop and in three,
+	// so longest path puts it at 3 with levels 1 and 2 left holding nothing
+	// on that branch — exactly the gap ranking has to close.
+	res := build(t, map[string]string{
+		"app/page.tsx": `import "./x"; import "./a";`,
+		"app/a.ts":     `import "./b";`,
+		"app/b.ts":     `import "./c";`,
+		"app/c.ts":     `import "./x";`,
+		"app/x.ts":     `export const x = 1;`,
+	})
+
+	seen := map[int]bool{}
+	maxDepth := 0
+	for _, n := range Build(res, false).Nodes {
+		seen[n.Depth] = true
+		if n.Depth > maxDepth {
+			maxDepth = n.Depth
+		}
+	}
+	for d := 0; d <= maxDepth; d++ {
+		if !seen[d] {
+			t.Errorf("level %d is empty; depths must be consecutive ranks, got %v", d, seen)
+		}
+	}
+	if maxDepth >= len(seen) {
+		t.Errorf("max depth %d with only %d distinct levels — depths are not ranks", maxDepth, len(seen))
+	}
+}

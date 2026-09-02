@@ -1,6 +1,8 @@
 package web
 
 import (
+	"sort"
+
 	"github.com/MihaiPosea/cairn/internal/graph"
 )
 
@@ -14,6 +16,15 @@ import (
 // Depth is the *longest* path from an entry point, not the shortest. A file
 // reached both directly and through five hops belongs at depth five, or its
 // edges point backwards and the layout stops reading left to right.
+//
+// Longest path is correct but its raw numbers are not usable as labels. On
+// excalidraw it reaches 648 — not because anything is 648 imports deep, but
+// because that is the longest chain that can be strung together across the
+// repo, and most files pile up near the end of it. A column headed "630" tells
+// a reader nothing. So the final step replaces each depth by its rank among the
+// depths that actually occur, collapsing the empty levels between them. Rank is
+// monotonic in depth, so every edge still points forward — the property the
+// longest path was chosen for survives — and the labels become 0, 1, 2, 3.
 func layers(g *graph.Graph, ids []string) map[string]int {
 	inSet := make(map[string]bool, len(ids))
 	for _, id := range ids {
@@ -43,7 +54,7 @@ func layers(g *graph.Graph, ids []string) map[string]int {
 				}
 			}
 		}
-		return depth
+		return compact(depth)
 	}
 
 	// Cyclic graph: relax repeatedly, bounded so a cycle cannot spin forever.
@@ -66,6 +77,30 @@ func layers(g *graph.Graph, ids []string) map[string]int {
 		if !changed {
 			break
 		}
+	}
+	return compact(depth)
+}
+
+// compact renumbers depths to their rank, so the levels that exist are
+// consecutive. Order is preserved exactly: depth[a] < depth[b] implies
+// rank[a] < rank[b], and equal depths stay equal.
+func compact(depth map[string]int) map[string]int {
+	seen := make(map[int]bool, len(depth))
+	for _, d := range depth {
+		seen[d] = true
+	}
+	levels := make([]int, 0, len(seen))
+	for d := range seen {
+		levels = append(levels, d)
+	}
+	sort.Ints(levels)
+
+	rank := make(map[int]int, len(levels))
+	for i, d := range levels {
+		rank[d] = i
+	}
+	for id, d := range depth {
+		depth[id] = rank[d]
 	}
 	return depth
 }

@@ -504,8 +504,17 @@ function render() {
 
   const m = 260;
   const x0 = -tx / s - m, y0 = -ty / s - m, x1 = (VW - tx) / s + m, y1 = (VH - ty) / s + m;
+  // Paint order matters more than any of the drawing does.
+  //
+  // Edges used to be drawn first and every container fill painted straight
+  // over them, so a line into an open folder vanished at its border and the
+  // graph looked disconnected exactly where it was most connected. Wells
+  // first, then edges, then the boxes, and finally the selected chain on top
+  // of everything so it is never occluded.
+  drawWells(x0, y0, x1, y1);
   if (s > 0.2 || selected) drawEdges(x0, y0, x1, y1, s > 0.28);
   drawBoxes(x0, y0, x1, y1);
+  if (selected) drawChain(s > 0.28);
   drawLayerHeads();
   ctx.restore();
   drawMini();
@@ -561,14 +570,34 @@ function drawEdges(x0, y0, x1, y1, curved) {
   for (const e of view.edges) {
     const a = idx.get(e.from), b = idx.get(e.to);
     if (!a || !b) continue;
-    if (Math.max(a.x + a.bw, b.x + b.bw) < x0 || Math.min(a.x, b.x) > x1) continue;
-    if (Math.max(a.y + a.bh, b.y + b.bh) < y0 || Math.min(a.y, b.y) > y1) continue;
+    // An edge touching the selection is never culled. Culling it produced the
+    // worst bug in the view: select a node the camera happens not to be
+    // looking at and all ten of its connections vanish, leaving only unrelated
+    // context lines — the graph appearing to show nothing connected to the one
+    // thing you asked about.
+    const touches = selected && (e.from === selected || e.to === selected);
+    if (!touches) {
+      if (Math.max(a.x + a.bw, b.x + b.bw) < x0 || Math.min(a.x, b.x) > x1) continue;
+      if (Math.max(a.y + a.bh, b.y + b.bh) < y0 || Math.min(a.y, b.y) > y1) continue;
+    }
     if (selected && hotSet.has(e.from) && hotSet.has(e.to)) {
+      // Collected, not drawn: the chain is painted after the boxes.
       // Which side of the selection an edge sits on decides its colour.
       const dir = (e.to === selected || upSet.has(e.to)) && e.from !== selected && !downSet.has(e.from) ? 'in'
         : (e.from === selected || downSet.has(e.from)) ? 'out'
         : (upSet.has(e.from) ? 'in' : 'out');
-      hot.push([a, b, dir]);
+      // Direct neighbours are the answer; the rest of the reachable set is
+      // context. Ninety-eight equally-weighted lines is the same wall of
+      // spaghetti the grouping was meant to remove.
+      const direct = e.from === selected || e.to === selected;
+      // One hop. Folder aggregation collapses distance — a folder box sits one
+      // hop from every file inside it — so allowing two reached 206 lines on a
+      // node with 10 real connections. What is left is the ego network: the
+      // selection, its neighbours, and how those neighbours relate to each
+      // other. The full reachable set still shades the boxes.
+      const far = Math.max(hops.get(e.from) ?? 99, hops.get(e.to) ?? 99);
+      if (!direct && far > HOP_LIMIT) continue;
+      hot.push([a, b, dir, direct]);
       continue;
     }
     buckets[e.n > 24 ? 2 : e.n > 4 ? 1 : 0].push([a, b]);
@@ -584,19 +613,55 @@ function drawEdges(x0, y0, x1, y1, curved) {
     for (const [a, b] of buckets[i]) edgePath(a, b, curved);
     ctx.stroke();
   }
-  if (hot.length) {
-    ctx.globalAlpha = 1;
-    for (const dir of ['in', 'out']) {
-      const set = hot.filter(h => h[2] === dir);
-      if (!set.length) continue;
-      ctx.strokeStyle = dir === 'in' ? C.in : C.out;
-      ctx.lineWidth = 2 / s;
-      ctx.beginPath();
-      for (const [a, b] of set) edgePath(a, b, true);
-      ctx.stroke();
-    }
-  }
+  chain = hot;
   ctx.globalAlpha = 1;
+}
+
+let chain = [];
+
+// The selected node's relationships, on top of everything and with arrowheads.
+// Without a head, a line between two boxes says they are related but not which
+// way round, which is the only thing the reader is asking.
+function drawChain(curved) {
+  for (const dir of ['in', 'out']) {
+    const col = dir === 'in' ? C.in : C.out;
+
+    // Everything further out: thin and quiet, so the shape of the blast radius
+    // is still visible without competing with the answer.
+    const far = chain.filter(h => h[2] === dir && !h[3]);
+    if (far.length) {
+      ctx.globalAlpha = 0.22;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1 / s;
+      ctx.beginPath();
+      for (const [a, b] of far) edgePath(a, b, curved);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // One hop from the selection: full weight, with a head.
+    const near = chain.filter(h => h[2] === dir && h[3]);
+    if (!near.length) continue;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 2.4 / s;
+    ctx.beginPath();
+    for (const [a, b] of near) edgePath(a, b, curved);
+    ctx.stroke();
+    ctx.fillStyle = col;
+    for (const [a, b] of near) arrowHead(b);
+  }
+}
+
+// A small triangle just outside the target's left edge.
+function arrowHead(b) {
+  const [x, y] = anchor(b).l;
+  const h = 5 / s, w = 7 / s;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x - w, y - h);
+  ctx.lineTo(x - w, y + h);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function edgePath(a, b, curved) {
@@ -604,6 +669,23 @@ function edgePath(a, b, curved) {
   ctx.moveTo(ax, ay);
   if (curved) { const mx = (ax + bx) / 2; ctx.bezierCurveTo(mx, ay, mx, by, bx, by); }
   else ctx.lineTo(bx, by);
+}
+
+// The recessed background of every open container, drawn before any edge.
+function drawWells(x0, y0, x1, y1) {
+  for (const x of view.boxes) {
+    if (!isOpen(x)) continue;
+    if (x.x + x.bw < x0 || x.x > x1 || x.y + x.bh < y0 || x.y > y1) continue;
+    ctx.fillStyle = C.paper;
+    ctx.beginPath();
+    ctx.roundRect(x.x, x.y, x.bw, x.bh, 10);
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle = C.surface2;
+    ctx.fillRect(x.x, x.y, x.bw, HEADER);
+    ctx.restore();
+  }
 }
 
 function drawBoxes(x0, y0, x1, y1) {
@@ -615,13 +697,14 @@ function drawBoxes(x0, y0, x1, y1) {
     if (x.x + x.bw < x0 || x.x > x1 || x.y + x.bh < y0 || x.y > y1) continue;
 
     const open = isOpen(x);
+    // The well is already painted; a container only needs its frame and label.
     const dim = (selected && !hotSet.has(x.id) && !open) ||
                 (filter && !x.label.toLowerCase().includes(filter) && !open);
     ctx.globalAlpha = dim ? 0.12 : 1;
     const isSel = x.id === selected, isHover = x.id === hovered;
 
     // Container: a light well with a title bar, so its contents read as inside.
-    ctx.fillStyle = open ? C.paper : x.group ? C.surface2
+    ctx.fillStyle = x.group ? C.surface2
       : x.kind === 'package' ? C.pkgSoft : isSel ? C.accentSoft : C.surface;
     // Entry points get a marker, not a coloured outline. Outlining them turned
     // most of a repo blue, which is the same as marking nothing.
@@ -631,20 +714,13 @@ function drawBoxes(x0, y0, x1, y1) {
     // Rounded to the site's small radius; a 1px hairline at any zoom.
     ctx.beginPath();
     ctx.roundRect(x.x, x.y, x.bw, x.bh, open ? 10 : 6);
-    ctx.fill();
+    if (!open) ctx.fill();
     if (x.dead && !x.group) ctx.setLineDash([4 / s, 3 / s]);
     ctx.lineWidth = (isSel ? 2.4 : isHover ? 1.8 : open ? 1.4 : x.group ? 1.3 : 1) / s;
     ctx.stroke();
     ctx.setLineDash([]);
 
     if (open) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.roundRect(x.x, x.y, x.bw, x.bh, 10);
-      ctx.clip();
-      ctx.fillStyle = C.surface2;
-      ctx.fillRect(x.x, x.y, x.bw, HEADER);
-      ctx.restore();
       ctx.strokeStyle = C.rule;
       ctx.lineWidth = 1 / s;
       ctx.beginPath();
@@ -817,6 +893,8 @@ addEventListener('keydown', e => {
 // me" and "what do I depend on" are opposite questions and a single highlight
 // answers neither clearly.
 let upSet = null, downSet = null;
+let hops = new Map();
+const HOP_LIMIT = 1;
 
 function relations(id) {
   const inc = new Map(), outm = new Map();
@@ -824,9 +902,22 @@ function relations(id) {
     (inc.get(e.to) || inc.set(e.to, []).get(e.to)).push(e.from);
     (outm.get(e.from) || outm.set(e.from, []).get(e.from)).push(e.to);
   }
+  // Distance from the selection, so the drawing can fade the halo by how far
+  // away a thing is. The full reachable set still shades the boxes — that is
+  // the blast radius, and it is worth seeing — but drawing every one of its
+  // edges is what produced the hairball. Lines stop at HOP_LIMIT.
+  hops = new Map([[id, 0]]);
   const walk = (start, adj) => {
-    const seen = new Set(); const q = [start];
-    while (q.length) for (const n of (adj.get(q.shift()) || [])) if (!seen.has(n)) { seen.add(n); q.push(n); }
+    const seen = new Set(); const q = [[start, 0]];
+    while (q.length) {
+      const [cur, d] = q.shift();
+      for (const n of (adj.get(cur) || [])) {
+        if (seen.has(n)) continue;
+        seen.add(n);
+        if (!hops.has(n) || hops.get(n) > d + 1) hops.set(n, d + 1);
+        q.push([n, d + 1]);
+      }
+    }
     return seen;
   };
   upSet = walk(id, inc);
@@ -834,12 +925,46 @@ function relations(id) {
   return new Set([id, ...upSet, ...downSet]);
 }
 
-function select(id) {
+function select(id, frame = false) {
   selected = id;
   hotSet = id ? relations(id) : null;
   if (!id) { upSet = downSet = null; }
   renderPanel(id ? view.index.get(id) : null);
+  if (id && frame) frameSelection(id);
   draw();
+}
+
+// Put the selection and everything one hop from it on screen together.
+//
+// "How is this connected" cannot be answered by a picture that does not contain
+// the things it is connected to, and after a fit on a wide graph the camera is
+// at the far left while the node you picked may be four thousand pixels away.
+function frameSelection(id) {
+  const me = view.index.get(id);
+  if (!me) return;
+
+  let l = me.x, t = me.y, r = me.x + me.bw, b = me.y + me.bh;
+  let n = 0;
+  for (const e of view.edges) {
+    const other = e.from === id ? e.to : e.to === id ? e.from : null;
+    if (!other) continue;
+    const o = view.index.get(other);
+    if (!o) continue;
+    n++;
+    l = Math.min(l, o.x); t = Math.min(t, o.y);
+    r = Math.max(r, o.x + o.bw); b = Math.max(b, o.y + o.bh);
+  }
+
+  const pad = 70;
+  const w = r - l + pad * 2, h = b - t + pad * 2;
+  // Zoomed out far enough to include the neighbours, but never so far that the
+  // labels stop being readable — past that point framing has cost more than it
+  // gave.
+  let ns = Math.min(VW / w, VH / h, 1.1);
+  if (n === 0) ns = Math.max(s, 0.7);
+  ns = Math.max(ns, 0.32);
+
+  moveTo(VW / 2 - (l + r) / 2 * ns, VH / 2 - (t + b) / 2 * ns, ns, 380);
 }
 
 // ── panel ───────────────────────────────────────────────────────────────────
@@ -955,8 +1080,7 @@ function wire(panel) {
       }
       const id = el.getAttribute('data-go');
       const t = view.index.get(id);
-      goTo(id);
-      if (t && t.group) expandGroup(t); else select(id);
+      if (t && t.group) { goTo(id); expandGroup(t); } else select(id, true);
     };
   }
 }
