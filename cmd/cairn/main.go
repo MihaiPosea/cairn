@@ -43,6 +43,33 @@ func main() {
 	}
 }
 
+// splitArgs separates flags from positional arguments so flags are accepted
+// anywhere on the line. takesValue names the flags whose value is a separate
+// token; a bool flag must not swallow the argument after it.
+func splitArgs(args []string, takesValue map[string]bool) (flags, positional []string) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			positional = append(positional, args[i+1:]...)
+			break
+		}
+		if len(a) < 2 || a[0] != '-' {
+			positional = append(positional, a)
+			continue
+		}
+		flags = append(flags, a)
+		name := strings.TrimLeft(a, "-")
+		if strings.ContainsRune(name, '=') {
+			continue
+		}
+		if takesValue[name] && i+1 < len(args) {
+			i++
+			flags = append(flags, args[i])
+		}
+	}
+	return flags, positional
+}
+
 func run(args []string) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
 		fmt.Print(usage)
@@ -57,10 +84,16 @@ func run(args []string) error {
 	addr := fs.String("addr", "localhost:7777", "address for `cairn serve`")
 	withPkgs := fs.Bool("packages", false, "include packages in the graph view")
 	base := fs.String("base", "origin/main", "git ref to compare against for `cairn affected`")
-	if err := fs.Parse(args[1:]); err != nil {
+	// Go's flag package stops parsing at the first non-flag argument, so
+	// `cairn export graph.html --dir ~/repo` silently dropped --dir and
+	// exported the current directory instead. Four different repositories
+	// exported the same 40,547 bytes and nothing said a word. Every command
+	// here takes both a target and a --dir, so that shape is the normal one.
+	flags, rest := splitArgs(args[1:], map[string]bool{"dir": true, "addr": true, "base": true})
+	if err := fs.Parse(append(flags, rest...)); err != nil {
 		return err
 	}
-	rest := fs.Args()
+	rest = fs.Args()
 
 	// `cairn scan ~/repo` is the shape people expect, so a positional argument
 	// to scan is also treated as the directory.
