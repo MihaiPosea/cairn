@@ -11,6 +11,7 @@ package resolve
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -26,6 +27,8 @@ const (
 	ToPackage
 	// ToBuiltin is a runtime builtin such as node:fs.
 	ToBuiltin
+	// ToVirtual is a module synthesised by a framework or bundler.
+	ToVirtual
 	// Unresolved means none of the rules matched. Always carries a Reason.
 	Unresolved
 )
@@ -38,6 +41,8 @@ func (k Kind) String() string {
 		return "package"
 	case ToBuiltin:
 		return "builtin"
+	case ToVirtual:
+		return "virtual"
 	case Unresolved:
 		return "unresolved"
 	}
@@ -171,6 +176,38 @@ func New(root string) (*Resolver, error) {
 	return r, cfgErr
 }
 
+// AddAliases registers path aliases discovered outside tsconfig — typically
+// from a bundler config.
+//
+// They are appended to the root alias set and re-sorted, so the same
+// longest-prefix rule applies across both sources. Must be called before the
+// resolver is used concurrently.
+func (r *Resolver) AddAliases(base string, mapping map[string]string) {
+	if len(mapping) == 0 {
+		return
+	}
+	rules := make([]AliasRule, 0, len(mapping))
+	for pattern, target := range mapping {
+		// A bundler alias is a prefix match, not a glob: "@" -> "/src" means
+		// "@/x" becomes "/src/x". Expressing it as "@/*" -> "target/*" reuses
+		// the tsconfig machinery exactly.
+		p, t := pattern, target
+		if !strings.HasSuffix(p, "*") {
+			p = strings.TrimSuffix(p, "/") + "/*"
+			t = strings.TrimSuffix(t, "/") + "/*"
+		}
+		rules = append(rules, AliasRule{Pattern: p, Targets: []string{t}, Base: base})
+		// Also register the bare form, so "@" alone resolves to the directory's
+		// index file.
+		rules = append(rules, AliasRule{Pattern: pattern, Targets: []string{target}, Base: base})
+	}
+	r.rootAliases = append(r.rootAliases, compileAliases(rules)...)
+	sort.SliceStable(r.rootAliases, func(i, j int) bool {
+		return len(r.rootAliases[i].prefix) > len(r.rootAliases[j].prefix)
+	})
+	r.configs.Range(func(k, _ any) bool { r.configs.Delete(k); return true })
+}
+
 // Workspaces returns the monorepo packages that were discovered, if any.
 func (r *Resolver) Workspaces() map[string]*Workspace { return r.workspaces }
 
@@ -267,6 +304,21 @@ func (r *Resolver) Resolve(fromFile, specifier string) Result {
 		return Result{Kind: ToBuiltin, Name: "node:" + rest, Via: "node-prefix"}
 	}
 
+	// 1b. any other scheme, or a framework namespace prefix.
+	//
+	// Frameworks synthesise modules that never exist on disk: astro:content,
+	// virtual:uno.css, bun:sqlite, $app/stores, #imports, and Deno's npm: /
+	// jsr: / https: specifiers. Measured on the Astro repo before this
+	// existed: 546 of them reported as broken imports, which is both wrong and
+	// the kind of noise that makes someone close the tool.
+	//
+	// A scheme is recognised structurally rather than by keeping a list of
+	// frameworks — "word:" is simply not a file path — so a framework invented
+	// next year is handled without a change here.
+	if name, ok := virtualModule(specifier); ok {
+		return Result{Kind: ToVirtual, Name: name, Via: "virtual"}
+	}
+
 	// 2. relative or absolute path
 	if strings.HasPrefix(specifier, ".") || strings.HasPrefix(specifier, "/") {
 		base := filepath.Dir(filepath.Join(r.root, filepath.FromSlash(fromFile)))
@@ -314,7 +366,11 @@ func (r *Resolver) Resolve(fromFile, specifier string) Result {
 	// 6. package
 	name, sub := splitPackage(specifier)
 	if name == "" {
-		return Result{Kind: Unresolved, Reason: "not a valid package name: " + specifier}
+		return Result{
+			Kind:   Unresolved,
+			Reason: specifier + " is neither a file nor a valid package name",
+			Via:    "bare",
+		}
 	}
 	return Result{Kind: ToPackage, Package: name, Subpath: sub, Via: "bare"}
 }
@@ -343,14 +399,18 @@ func (r *Resolver) tryAliases(cfg *dirConfig, specifier string) (Result, bool) {
 				return res, true
 			}
 		}
-		// The alias matched but nothing on disk did. That is a broken import,
-		// not a package — saying so is far more useful than inventing a
-		// dependency on a package called "@".
-		return Result{
-			Kind:   Unresolved,
-			Reason: "tsconfig alias matched " + specifier + " but no target file exists",
-			Via:    "tsconfig-paths",
-		}, true
+		// The alias matched but nothing on disk did. Resolution must CONTINUE
+		// rather than stop here.
+		//
+		// TypeScript falls through to node_modules when a path mapping finds
+		// no file, and repos rely on that: a catch-all mapping such as
+		// "*": ["./src/*"] matches every bare specifier, so short-circuiting
+		// here reported `react` itself as a broken alias. Measured on shadcn/ui
+		// before the fix: 5,766 unresolved imports, 29% of the repo.
+		//
+		// The phantom-package problem this once guarded against is handled
+		// instead by validating the package name, which rejects "@/lib/x".
+		return Result{}, false
 	}
 	return Result{}, false
 }
@@ -472,20 +532,41 @@ func (r *Resolver) rel(abs string) string {
 	return filepath.ToSlash(rel)
 }
 
-// splitPackage separates a bare specifier into package name and subpath.
+// splitPackage separates a bare specifier into package name and subpath, and
+// returns an empty name when the specifier cannot be one.
 //
 //	"react"            -> "react", ""
 //	"lodash/fp"        -> "lodash", "fp"
 //	"@scope/pkg/sub/x" -> "@scope/pkg", "sub/x"
+//	"@/lib/x"          -> "", ""      (an unresolved alias, not a package)
+//
+// The validation matters more than it looks. Once a missed alias falls through
+// to here, an alias like "@/*" that pointed nowhere would otherwise invent a
+// dependency on a package named "@" — which is exactly the phantom this used to
+// short-circuit to avoid.
 func splitPackage(spec string) (name, subpath string) {
 	parts := strings.Split(spec, "/")
 	if strings.HasPrefix(spec, "@") {
-		if len(parts) < 2 {
-			return "", "" // "@scope" alone is not a package
+		// A scoped package is @scope/name; both halves must be non-empty.
+		if len(parts) < 2 || len(parts[0]) < 2 || parts[1] == "" {
+			return "", ""
 		}
-		return parts[0] + "/" + parts[1], strings.Join(parts[2:], "/")
+		name, subpath = parts[0]+"/"+parts[1], strings.Join(parts[2:], "/")
+	} else {
+		if parts[0] == "" {
+			return "", ""
+		}
+		name, subpath = parts[0], strings.Join(parts[1:], "/")
 	}
-	return parts[0], strings.Join(parts[1:], "/")
+
+	// npm names are lowercase and cannot contain whitespace or most
+	// punctuation. This is a sanity filter, not a full validator.
+	for _, r := range name {
+		if r == ' ' || r == '\t' || r == '\\' || r == ':' || r == '?' || r == '*' || r == '"' {
+			return "", ""
+		}
+	}
+	return name, subpath
 }
 
 // tryWorkspace resolves an import of another package in the same monorepo.
@@ -504,11 +585,17 @@ func (r *Resolver) tryWorkspace(specifier string) (Result, bool) {
 		return Result{}, false
 	}
 
-	// A subpath import addresses a file inside the package directly.
+	// A subpath import addresses a file inside the package.
+	//
+	// "@acme/ui/button" is usually packages/ui/src/button.ts rather than
+	// packages/ui/button.ts, because the manifest maps subpaths onto a source
+	// directory. Both layouts are tried.
 	if subpath != "" {
-		if res, ok := r.tryFile(filepath.Join(ws.Dir, filepath.FromSlash(subpath))); ok {
-			res.Via = "workspace-subpath"
-			return res, true
+		for _, prefix := range []string{"", "src", "lib", "source"} {
+			if res, ok := r.tryFile(filepath.Join(ws.Dir, prefix, filepath.FromSlash(subpath))); ok {
+				res.Via = "workspace-subpath"
+				return res, true
+			}
 		}
 	}
 
@@ -523,9 +610,40 @@ func (r *Resolver) tryWorkspace(specifier string) (Result, bool) {
 			return res, true
 		}
 	}
+	// A workspace package whose entry points at an unbuilt output is still a
+	// real dependency. Reporting it as a package is truthful and keeps it out
+	// of the unresolved count, where it would look like a broken import.
 	return Result{
-		Kind:   Unresolved,
-		Reason: specifier + " is a workspace package but no entry file could be found in " + r.rel(ws.Dir),
-		Via:    "workspace",
+		Kind:    ToPackage,
+		Package: name,
+		Subpath: subpath,
+		Via:     "workspace-unbuilt",
 	}, true
+}
+
+// schemePattern matches a URI-style scheme at the start of a specifier:
+// astro:content, bun:sqlite, virtual:uno.css, npm:react, https://esm.sh/x.
+//
+// Windows drive letters ("C:\...") are excluded by requiring at least two
+// characters before the colon.
+var schemePattern = regexp.MustCompile(`^[a-z][a-z0-9+.\-]+:`)
+
+// namespacePrefixes are framework conventions that are not schemes.
+//
+// SvelteKit uses $app and $env; Node's own subpath imports and Nuxt both use
+// a leading '#'. None of these are files, and none can be resolved without
+// running the framework's own resolver.
+var namespacePrefixes = []string{"$app/", "$env/", "$service-worker", "#"}
+
+// virtualModule reports whether a specifier names a synthesised module.
+func virtualModule(spec string) (string, bool) {
+	if schemePattern.MatchString(spec) {
+		return spec, true
+	}
+	for _, p := range namespacePrefixes {
+		if strings.HasPrefix(spec, p) {
+			return spec, true
+		}
+	}
+	return "", false
 }

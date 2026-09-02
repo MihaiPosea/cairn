@@ -38,6 +38,17 @@ type summaryOut struct {
 	Installed           int      `json:"installed,omitempty"`
 	UnusedDeclared      []string `json:"unused_declared,omitempty"`
 	ImportedNotDeclared []string `json:"imported_not_declared,omitempty"`
+
+	// UnresolvedList is every unresolved specifier, not the truncated preview
+	// the human output shows. Diagnosing a high rate needs all of them.
+	UnresolvedList []unresolvedOut `json:"unresolved_list,omitempty"`
+}
+
+type unresolvedOut struct {
+	File      string `json:"file"`
+	Line      int    `json:"line"`
+	Specifier string `json:"specifier"`
+	Reason    string `json:"reason"`
 }
 
 func summary(res *scan.Result) summaryOut {
@@ -71,6 +82,11 @@ func summary(res *scan.Result) summaryOut {
 		out.UnusedDeclared = res.Join.UnusedDeclared
 		out.ImportedNotDeclared = res.Join.ImportedNotDeclared
 	}
+	for _, u := range res.Unresolved {
+		out.UnresolvedList = append(out.UnresolvedList, unresolvedOut{
+			File: u.File, Line: u.Line, Specifier: u.Specifier, Reason: u.Reason,
+		})
+	}
 	return out
 }
 
@@ -97,12 +113,23 @@ func printSummary(res *scan.Result) {
 	}
 
 	fmt.Printf("\n  %-22s %d (%.1f%% of imports)\n", "unresolved", len(res.Unresolved), res.UnresolvedRate()*100)
-	for i, u := range res.Unresolved {
-		if i == 10 {
-			fmt.Printf("      … and %d more\n", len(res.Unresolved)-10)
-			break
+	if len(res.Unresolved) > 0 {
+		clusters := scan.ClusterUnresolved(res.Unresolved)
+		// Grouped by shared cause rather than listed one by one. A repo that
+		// generates files during its build can have thousands of unresolved
+		// imports for a single reason, and a wall of "not found" lines reads
+		// as a broken tool rather than as a fact about the repo.
+		for i, c := range clusters {
+			if i == 6 {
+				fmt.Printf("      … and %d more groups\n", len(clusters)-6)
+				break
+			}
+			fmt.Printf("      %5d  %-34s %s\n", c.Count, c.Prefix, c.Category)
 		}
-		fmt.Printf("      %s:%d  %s — %s\n", u.File, u.Line, u.Specifier, u.Reason)
+		if s := res.UnresolvedSummary(); s != "" {
+			fmt.Printf("\n      %s\n", s)
+		}
+		fmt.Println("      run with --json for the full list")
 	}
 
 	if n := len(res.CaseMismatches); n > 0 {

@@ -476,3 +476,56 @@ code inside a `<script>` really is just TypeScript.
 **React Native platform extensions.** `./Button` resolving to `Button.ios.tsx` — every
 platform-split component in an RN app was an unresolved import. Tried after the plain ladder so an
 unqualified file always wins, which is what a bundler does too.
+
+---
+
+## Real repositories
+
+Fixtures test what the author imagined; real repositories test what exists. Six were cloned and
+scanned, and they immediately found what twelve hand-written fixtures had not.
+
+| repo | files | imports | unresolved before | after |
+|---|---|---|---|---|
+| excalidraw | 668 | 4,692 | 0.32% | **0.00%** |
+| svelte | 8,060 | 7,725 | 1.27% | 1.27% |
+| vue-core | 538 | 2,153 | 2.42% | 2.14% |
+| create-t3-app | 240 | 768 | 17.06% | **2.60%** |
+| astro | 4,615 | 11,614 | 9.27% | **8.05%** |
+| shadcn/ui | 3,947 | 19,895 | 28.98% | **23.24%** |
+
+**A matched-but-missing alias short-circuited everything.**
+shadcn maps `"react": ["./node_modules/@types/react"]`, and returning "unresolved" the moment an
+alias matched meant `react` itself was reported as a broken import — 5,766 times. TypeScript
+continues to `node_modules` when a path mapping finds no file, and so does cairn now. The phantom
+`@` package this once guarded against is prevented instead by validating the package name, which is
+where the check belonged.
+
+**Framework virtual modules were reported as broken imports.**
+`astro:content`, `virtual:uno.css`, `bun:sqlite`, `$app/stores`, `#imports`, `npm:`, `jsr:`,
+`https:` — 546 in the Astro repo alone. They are recognised structurally, by the fact that `word:` is
+not a file path, rather than by keeping a list of frameworks that would need updating.
+
+**Bundler aliases live outside tsconfig.**
+Vite, Rollup, webpack and Rspack declare them in JavaScript. Many projects mirror them into tsconfig
+for the editor, which is why this hid for so long — the fixture that "passed" was only passing
+because the alias silently became a phantom package. They are now read from the config's syntax
+tree, evaluating far enough to take the last string literal, which covers `path.resolve(__dirname,
+"./src")` and `fileURLToPath(new URL("./src", import.meta.url))` without executing anything.
+
+### What is left is true
+
+astro's remaining 935 and shadcn's 4,623 are **not cairn failing**. astro's point into `dist/`, which
+does not exist in an unbuilt clone; shadcn's are `@/styles/base-nova/*`, files that repo generates
+during its build. Both are correct findings about a fresh checkout.
+
+But 23% unresolved reads as a broken tool, so the output now groups by shared cause and says so in
+one line:
+
+```
+4618 of 4623 (100%) have the same cause: alias or generated path that does not
+exist in a fresh checkout
+```
+
+Aggregating by category rather than by largest group is what makes that sentence true — astro's
+spread across ninety-odd path prefixes, but 98% share one cause, and the biggest single group is
+only 28%.

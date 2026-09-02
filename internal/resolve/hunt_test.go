@@ -128,3 +128,54 @@ func TestSymlinkedFile(t *testing.T) {
 		t.Errorf("BUG: a symlinked source file should resolve")
 	}
 }
+
+// Framework and bundler virtual modules are not broken imports.
+func TestVirtualModules(t *testing.T) {
+	root := hrepo(t, map[string]string{"app/page.tsx": ""})
+	r := resolver(t, root)
+
+	for _, spec := range []string{
+		"astro:content", "astro:assets", "astro:env/server", // Astro
+		"virtual:uno.css", "virtual:pwa-register", // Vite plugins
+		"bun:sqlite", "bun:ffi", // Bun
+		"npm:react@18", "jsr:@std/path", // Deno
+		"https://esm.sh/react", "data:text/javascript,export default 1",
+		"$app/stores", "$env/static/private", // SvelteKit
+		"#internal/config", "#imports", // Node subpath imports, Nuxt
+	} {
+		got := r.Resolve("app/page.tsx", spec)
+		if got.Kind != ToVirtual {
+			t.Errorf("Resolve(%q) = %v (%s), want virtual", spec, got.Kind, got.Reason)
+		}
+	}
+}
+
+// A Windows drive letter is not a scheme.
+func TestDriveLetterIsNotAScheme(t *testing.T) {
+	root := hrepo(t, map[string]string{"a.ts": ""})
+	if got := resolver(t, root).Resolve("a.ts", "C:/x/y"); got.Kind == ToVirtual {
+		t.Error("a drive letter must not be treated as a virtual module scheme")
+	}
+}
+
+// A missed alias must fall through to package resolution, not short-circuit.
+//
+// shadcn/ui maps "react" through a paths entry that points at a types
+// directory; short-circuiting there reported react itself as a broken import,
+// 5,766 times across the repo.
+func TestMissedAliasFallsThroughToPackage(t *testing.T) {
+	root := hrepo(t, map[string]string{
+		"tsconfig.json": `{"compilerOptions":{"paths":{"*":["./src/*"],"@/*":["./*"]}}}`,
+		"app/page.tsx":  "",
+	})
+	r := resolver(t, root)
+
+	if got := r.Resolve("app/page.tsx", "react"); got.Kind != ToPackage || got.Package != "react" {
+		t.Errorf("react = %v %q (%s), want package react", got.Kind, got.Package, got.Reason)
+	}
+	// But an alias that points nowhere must still not become a phantom package.
+	if got := r.Resolve("app/page.tsx", "@/does/not/exist"); got.Kind != Unresolved {
+		t.Errorf("@/does/not/exist = %v pkg=%q, want unresolved not a package named @",
+			got.Kind, got.Package)
+	}
+}

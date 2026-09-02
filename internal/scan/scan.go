@@ -169,6 +169,12 @@ func RunWith(dir string, opts Options) (*Result, error) {
 
 	res0Manifest := pkgs.ManifestEntries(root)
 
+	// Aliases declared in a bundler config rather than tsconfig. Many projects
+	// mirror them into tsconfig for the editor; the ones that do not would
+	// otherwise have every aliased import unresolved.
+	bundlerAliases := loadBundlerAliases(root, files)
+	resolver.AddAliases(root, bundlerAliases)
+
 	res := &Result{
 		Graph:           graph.New(),
 		Root:            root,
@@ -310,6 +316,31 @@ func parseAll(root string, files []string, parser lang.Parser, ix *index.Index) 
 	return out
 }
 
+// loadBundlerAliases reads alias mappings out of any bundler config in the
+// repo root.
+//
+// Only the root is searched: a config nested inside a package usually applies
+// to that package's own build, and applying its aliases repo-wide would
+// resolve imports that the real bundler would not.
+func loadBundlerAliases(root string, files []string) map[string]string {
+	out := map[string]string{}
+	for _, rel := range files {
+		if strings.Contains(rel, "/") || !jsts.IsConfigFile(rel) {
+			continue
+		}
+		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			continue
+		}
+		for k, v := range jsts.ExtractAliases(rel, src) {
+			if _, dup := out[k]; !dup {
+				out[k] = v
+			}
+		}
+	}
+	return out
+}
+
 // cacheKey combines the file extension with its content hash.
 //
 // The extension is part of the key because it selects the grammar: the same
@@ -354,6 +385,8 @@ func addImport(res *Result, r *resolve.Resolver, fromFile string, imp lang.RawIm
 		to = &graph.Node{ID: graph.NodeID(graph.Package, out.Package), Kind: graph.Package, Name: out.Package}
 	case resolve.ToBuiltin:
 		to = &graph.Node{ID: graph.NodeID(graph.Builtin, out.Name), Kind: graph.Builtin, Name: out.Name}
+	case resolve.ToVirtual:
+		to = &graph.Node{ID: graph.NodeID(graph.Virtual, out.Name), Kind: graph.Virtual, Name: out.Name}
 	default:
 		res.Unresolved = append(res.Unresolved, Unresolvable{
 			File: fromFile, Specifier: imp.Specifier, Line: imp.Line,

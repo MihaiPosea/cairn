@@ -25,6 +25,14 @@ const (
 	// Builtin is a runtime builtin such as "node:fs" — real, but not a file
 	// and not a package.
 	Builtin
+	// Virtual is a module a framework or bundler synthesises: astro:content,
+	// virtual:uno.css, $app/stores, #imports.
+	//
+	// Kept apart from Builtin because they answer different questions. A
+	// builtin tells you the code touches the platform; a virtual module tells
+	// you the code is coupled to a specific framework's build step, which is
+	// usually the more interesting fact.
+	Virtual
 	// Unresolved is a specifier we could not resolve to anything. These are
 	// kept as nodes on purpose: silently dropping them would hide exactly the
 	// bugs we care about. The unresolved rate is the tool's honesty metric.
@@ -39,6 +47,8 @@ func (k Kind) String() string {
 		return "pkg"
 	case Builtin:
 		return "builtin"
+	case Virtual:
+		return "virtual"
 	case Unresolved:
 		return "unresolved"
 	}
