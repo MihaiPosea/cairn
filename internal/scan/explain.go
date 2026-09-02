@@ -89,11 +89,22 @@ done:
 		prefix = "./"
 	}
 
+	// Group by directory, never by filename.
+	//
+	// Including the filename splits a shared cause into one group per file:
+	// tldraw's auto-generated asset manifest imports 179 images from
+	// ./embed-icons/, none of which exist in a fresh clone, and each became its
+	// own group of one. The systematic-absence rule then never fired, because
+	// no group ever reached its threshold.
 	parts := strings.Split(rest, "/")
-	if len(parts) <= 2 {
+	if len(parts) == 1 {
 		return prefix + rest
 	}
-	return prefix + strings.Join(parts[:2], "/") + "/…"
+	dir := parts[:len(parts)-1]
+	if len(dir) > 2 {
+		dir = dir[:2]
+	}
+	return prefix + strings.Join(dir, "/") + "/…"
 }
 
 // generatedDirs are written by a framework or codegen step, never committed.
@@ -118,6 +129,9 @@ func categorise(prefix string, group []Unresolvable) string {
 	}
 	if allMatch(group, isTemplate) {
 		return "scaffolding templates — the files appear when the template is used"
+	}
+	if allMatch(group, isPlayground) {
+		return "playground and example apps — demos, not the library itself"
 	}
 
 	// Inspect the group's actual specifiers, not just the shared prefix.
@@ -239,6 +253,22 @@ func specifierIsTemplate(spec string) bool {
 var templateDirs = []string{
 	"template", "templates", "starter", "starters",
 	"scaffold", "scaffolds", "boilerplate", "blueprints",
+}
+
+// isPlayground recognises the demo apps a framework repository ships beside
+// its library.
+//
+// Kept as its own category rather than folded into test fixtures: a playground
+// is real code that really runs, and saying "this is demo code" is a different
+// statement from "this import is meant to fail". Excusing them silently would
+// hide genuine breakage in a directory people do read.
+func isPlayground(path string) bool {
+	for _, seg := range strings.Split(path, "/") {
+		if seg == "playground" || seg == "playgrounds" || seg == "sandbox" || seg == "demo" || seg == "demos" {
+			return true
+		}
+	}
+	return false
 }
 
 func isTemplate(path string) bool {

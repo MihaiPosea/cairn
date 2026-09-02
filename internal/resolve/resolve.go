@@ -872,7 +872,13 @@ var namespacePrefixes = []string{"$app/", "$env/", "$service-worker", "#"}
 // is absent from a fresh checkout and looks like a broken relative import.
 // Found in the TanStack Query repo, where it was most of the remaining
 // unresolved imports.
-var generatedRelative = []string{"./$types", "../$types", "./$houdini", "./$env"}
+var generatedRelative = []string{
+	"./$types", "../$types", "./$houdini", "./$env",
+	// React Router v7 writes route types into .react-router/types and exposes
+	// them as "./+types/<route>"; `react-router typegen` produces them, so a
+	// fresh checkout has none.
+	"./+types", "../+types",
+}
 
 // virtualModule reports whether a specifier names a synthesised module.
 func virtualModule(spec string) (string, bool) {
