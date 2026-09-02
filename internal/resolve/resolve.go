@@ -904,6 +904,12 @@ var generatedRelative = []string{
 
 // virtualModule reports whether a specifier names a synthesised module.
 func virtualModule(spec string) (string, bool) {
+	// A placeholder the build substitutes: SvelteKit's runtime imports
+	// "<sveltekit:generated>/server.js", which its compiler rewrites. No real
+	// path begins with an angle bracket, so this is unambiguous.
+	if strings.HasPrefix(spec, "<") {
+		return spec, true
+	}
 	if schemePattern.MatchString(spec) {
 		return spec, true
 	}

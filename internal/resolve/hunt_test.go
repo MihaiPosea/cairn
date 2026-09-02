@@ -229,11 +229,11 @@ func TestSubpathImportsWithJSExtension(t *testing.T) {
 // In a monorepo, the nearest package.json wins.
 func TestSubpathImportsUseNearestManifest(t *testing.T) {
 	root := hrepo(t, map[string]string{
-		"package.json":                    `{"imports":{"#x":"./root-x.ts"}}`,
-		"root-x.ts":                       "",
-		"packages/app/package.json":       `{"imports":{"#x":"./inner-x.ts"}}`,
-		"packages/app/inner-x.ts":         "",
-		"packages/app/src/main.ts":        "",
+		"package.json":              `{"imports":{"#x":"./root-x.ts"}}`,
+		"root-x.ts":                 "",
+		"packages/app/package.json": `{"imports":{"#x":"./inner-x.ts"}}`,
+		"packages/app/inner-x.ts":   "",
+		"packages/app/src/main.ts":  "",
 	})
 	got := resolver(t, root).Resolve("packages/app/src/main.ts", "#x")
 	if got.Path != "packages/app/inner-x.ts" {
@@ -278,9 +278,9 @@ func TestUnbuiltOutputResolvesToSource(t *testing.T) {
 // A repo that HAS been built must resolve to the real output, not the source.
 func TestBuiltOutputWinsOverSource(t *testing.T) {
 	root := hrepo(t, map[string]string{
-		"a.ts":            "",
-		"dist/thing.js":   "// compiled",
-		"src/thing.ts":    "// source",
+		"a.ts":          "",
+		"dist/thing.js": "// compiled",
+		"src/thing.ts":  "// source",
 	})
 	got := resolver(t, root).Resolve("a.ts", "./dist/thing.js")
 	if got.Path != "dist/thing.js" {
@@ -304,14 +304,14 @@ func TestNoSourceTwinStaysUnresolved(t *testing.T) {
 // directory rather than from the repository root.
 func TestStaticAssetsResolveFromTheNearestProjectRoot(t *testing.T) {
 	root := hrepo(t, map[string]string{
-		"package.json":                            `{"name":"root","workspaces":["apps/*"]}`,
-		"public/root-logo.svg":                    "<svg/>",
-		"apps/web/package.json":                   `{"name":"web"}`,
-		"apps/web/public/typescript.svg":          "<svg/>",
-		"apps/web/src/main.tsx":                   "",
-		"apps/site/package.json":                  `{"name":"site"}`,
-		"apps/site/static/hero.png":               "x",
-		"apps/site/src/index.ts":                  "",
+		"package.json":                   `{"name":"root","workspaces":["apps/*"]}`,
+		"public/root-logo.svg":           "<svg/>",
+		"apps/web/package.json":          `{"name":"web"}`,
+		"apps/web/public/typescript.svg": "<svg/>",
+		"apps/web/src/main.tsx":          "",
+		"apps/site/package.json":         `{"name":"site"}`,
+		"apps/site/static/hero.png":      "x",
+		"apps/site/src/index.ts":         "",
 	})
 	r := resolver(t, root)
 
@@ -332,12 +332,12 @@ func TestStaticAssetsResolveFromTheNearestProjectRoot(t *testing.T) {
 // Declaration files must be found, but must never win over an implementation.
 func TestDeclarationFiles(t *testing.T) {
 	root := hrepo(t, map[string]string{
-		"a.ts":            "",
+		"a.ts":               "",
 		"typings/style.d.ts": "",
-		"lib/both.ts":     "",
-		"lib/both.d.ts":   "",
-		"lib/types.js":    "", // an import of ./types.js where only .d.ts exists
-		"esm/only.d.ts":   "",
+		"lib/both.ts":        "",
+		"lib/both.d.ts":      "",
+		"lib/types.js":       "", // an import of ./types.js where only .d.ts exists
+		"esm/only.d.ts":      "",
 	})
 	r := resolver(t, root)
 
@@ -369,7 +369,7 @@ func TestNodeModulesRelativePathIsAPackage(t *testing.T) {
 // A package importing its own bundle resolves to the package entry.
 func TestOwnBundleResolvesToPackageEntry(t *testing.T) {
 	root := hrepo(t, map[string]string{
-		"packages/compiler-core/index.js":   "",
+		"packages/compiler-core/index.js":     "",
 		"packages/compiler-core/src/index.ts": "",
 	})
 	got := resolver(t, root).Resolve("packages/compiler-core/index.js", "./dist/compiler-core.cjs.prod.js")
@@ -385,12 +385,12 @@ func TestOwnBundleResolvesToPackageEntry(t *testing.T) {
 // importing module depends on all of them.
 func TestGlobImports(t *testing.T) {
 	root := hrepo(t, map[string]string{
-		"src/Alert.tsx":       "",
-		"intl/en-US.json":     "{}",
-		"intl/fr-FR.json":     "{}",
-		"intl/de-DE.json":     "{}",
-		"intl/nested/x.json":  "{}",
-		"other/thing.json":    "{}",
+		"src/Alert.tsx":      "",
+		"intl/en-US.json":    "{}",
+		"intl/fr-FR.json":    "{}",
+		"intl/de-DE.json":    "{}",
+		"intl/nested/x.json": "{}",
+		"other/thing.json":   "{}",
 	})
 	got := resolver(t, root).Resolve("src/Alert.tsx", "../intl/*.json")
 
@@ -469,6 +469,20 @@ func TestReactRouterTypegenIsVirtual(t *testing.T) {
 	r := resolver(t, root)
 	for _, spec := range []string{"./+types/route", "./+types/_index", "../+types/root"} {
 		if got := r.Resolve("app/routes/index.tsx", spec); got.Kind != ToVirtual {
+			t.Errorf("Resolve(%q) = %v, want virtual", spec, got.Kind)
+		}
+	}
+}
+
+// SvelteKit's runtime imports build-time placeholders in angle brackets.
+func TestAngleBracketPlaceholderIsVirtual(t *testing.T) {
+	root := hrepo(t, map[string]string{"a.js": ""})
+	r := resolver(t, root)
+	for _, spec := range []string{
+		"<sveltekit:generated>/server.js",
+		"<sveltekit:generated>/env/config.js",
+	} {
+		if got := r.Resolve("a.js", spec); got.Kind != ToVirtual {
 			t.Errorf("Resolve(%q) = %v, want virtual", spec, got.Kind)
 		}
 	}
