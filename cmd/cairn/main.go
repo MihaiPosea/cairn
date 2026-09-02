@@ -28,6 +28,7 @@ usage:
   cairn verify                  check cairn's graph against TypeScript's own resolver
   cairn serve                   open the graph in a browser
   cairn export <file.html>      write a standalone page you can send someone
+  cairn affected [--base ref]   what needs re-running after your changes
 
 flags:
   --dir <path>                  repo to scan (default: .)
@@ -55,6 +56,7 @@ func run(args []string) error {
 	sizes := fs.Bool("sizes", false, "measure installed package sizes")
 	addr := fs.String("addr", "localhost:7777", "address for `cairn serve`")
 	withPkgs := fs.Bool("packages", false, "include packages in the graph view")
+	base := fs.String("base", "origin/main", "git ref to compare against for `cairn affected`")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -119,6 +121,11 @@ func run(args []string) error {
 
 	case "verify":
 		return runVerify(root, *asJSON)
+
+	case "affected":
+		return withScan(root, false, func(res *scan.Result) error {
+			return runAffected(root, res, *base, *asJSON)
+		})
 
 	case "serve":
 		return withScan(root, *sizes, func(res *scan.Result) error {

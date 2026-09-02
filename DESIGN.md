@@ -294,3 +294,34 @@ interaction: the blast radius made visible rather than printed as a number.
 
 Verified in a real browser, not assumed: rendered, clicked a node, confirmed the panel showed
 `imported by app/page.tsx:2` and the highlight followed the actual dependency chain.
+
+---
+
+## M8 — the payoff: what needs re-running
+
+The original plan was a build cache. Building the rest revealed a better shape with the same
+insight and none of the migration cost: **`cairn affected`** takes what git says changed, walks the
+graph backwards, and reports the files and tests that could possibly be impacted. Nothing to adopt,
+nothing to configure, one line in CI.
+
+Measured on `personal-website`: editing one file leaves **58% of the repo untouched**.
+
+**This is where being wrong stops being cosmetic.**
+A missed edge in a picture is a slightly wrong picture. A missed edge here is a test that should
+have run and did not. So every condition that could make the answer unsound produces a **bail** with
+a stated reason and the instruction to run everything:
+
+- the repo contains `import()` with a computed path — files can be loaded invisibly
+- the repo has any unresolved import — the graph is incomplete
+- a changed file is not in the graph — a config change can affect anything
+
+That last one fires on `tsconfig.json`, `next.config.mjs`, and every lockfile, which is correct:
+change a tsconfig `paths` entry and every conclusion in this tool is void.
+
+**The soundness limit is printed with every result**, not buried in documentation: this follows
+import edges only, and tests that share a database, a fixture file, or global state are coupled in
+ways no import graph can see.
+
+**A bug found by using it.** The first real run reported `.cairn/parse-cache.gob` as a changed file
+and bailed on cairn's own artifact. Fixed by writing `.gitignore` containing `*` inside the cache
+directory, so it ignores itself rather than editing the user's `.gitignore`.

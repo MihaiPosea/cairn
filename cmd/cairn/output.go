@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/MihaiPosea/cairn/internal/affected"
 	"github.com/MihaiPosea/cairn/internal/graph"
 	"github.com/MihaiPosea/cairn/internal/query"
 	"github.com/MihaiPosea/cairn/internal/scan"
@@ -508,4 +509,71 @@ func describeView(p *web.Payload) {
 	if p.Truncated > 0 {
 		fmt.Printf("  %-22s %d (kept the most-depended-on)\n", "not drawn", p.Truncated)
 	}
+}
+
+// ── affected ────────────────────────────────────────────────────────────────
+
+func runAffected(root string, res *scan.Result, base string, asJSON bool) error {
+	changed, err := affected.ChangedFiles(root, base)
+	if err != nil {
+		return fmt.Errorf("asking git what changed: %w", err)
+	}
+	a := affected.Compute(res, changed)
+
+	if asJSON {
+		return emit(map[string]any{
+			"changed": a.Changed, "unknown": a.Unknown,
+			"affected": a.Affected, "tests": a.Tests, "entries": a.Entries,
+			"total_files": a.TotalFiles, "total_tests": a.TotalTests,
+			"reduction": a.Reduction(), "test_reduction": a.TestReduction(),
+			"bail": a.Bail, "safe": a.Bail == "",
+		})
+	}
+
+	fmt.Printf("%s\n\n", root)
+	if len(a.Changed) == 0 {
+		fmt.Println("  nothing changed against " + base)
+		return nil
+	}
+
+	fmt.Printf("  %s changed\n", plural(len(a.Changed), "file"))
+	for i, f := range a.Changed {
+		if i == 6 {
+			fmt.Printf("      … and %d more\n", len(a.Changed)-6)
+			break
+		}
+		fmt.Printf("      %s\n", f)
+	}
+
+	if a.Bail != "" {
+		fmt.Printf("\n  run everything\n")
+		fmt.Printf("      %s\n", a.Bail)
+		fmt.Println("      a test that should have run and did not is worse than a slow build")
+		return nil
+	}
+
+	fmt.Printf("\n  %d of %d files affected  (%.0f%% of the repo untouched)\n",
+		len(a.Affected), a.TotalFiles, a.Reduction()*100)
+
+	if a.TotalTests > 0 {
+		fmt.Printf("\n  %d of %d tests need to run  (%.0f%% skippable)\n",
+			len(a.Tests), a.TotalTests, a.TestReduction()*100)
+		for _, t := range a.Tests {
+			fmt.Printf("      %s\n", t)
+		}
+	}
+	if len(a.Entries) > 0 {
+		fmt.Printf("\n  %s reached\n", plural(len(a.Entries), "entry point"))
+		for i, e := range a.Entries {
+			if i == 6 {
+				fmt.Printf("      … and %d more\n", len(a.Entries)-6)
+				break
+			}
+			fmt.Printf("      %s\n", e)
+		}
+	}
+
+	fmt.Println("\n  soundness: this follows import edges only. Tests that share a database,")
+	fmt.Println("  a fixture file, or global state are coupled in ways no import graph sees.")
+	return nil
 }

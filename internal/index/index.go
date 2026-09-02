@@ -129,9 +129,14 @@ func (ix *Index) Save() error {
 	stored := onDisk{Version: formatVersion, Entries: ix.entries}
 	ix.mu.RUnlock()
 
-	if err := os.MkdirAll(filepath.Dir(ix.path), 0o755); err != nil {
+	dir := filepath.Dir(ix.path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	// Make the cache directory ignore itself rather than editing the user's
+	// .gitignore. Found the hard way: without this, cairn's own cache file
+	// shows up in `git diff` and `cairn affected` bails on its own artifact.
+	_ = os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("*\n"), 0o644)
 	tmp, err := os.CreateTemp(filepath.Dir(ix.path), "parse-cache-*.tmp")
 	if err != nil {
 		return err
