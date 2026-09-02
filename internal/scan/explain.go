@@ -112,6 +112,7 @@ var generatedDirs = map[string]bool{
 	".next": true, ".nuxt": true, ".svelte-kit": true, ".astro": true,
 	".source": true, ".vinxi": true, ".output": true, ".contentlayer": true,
 	"generated": true, "__generated__": true, ".wxt": true,
+	"gen": true, "__gen__": true, ".react-router": true, ".tanstack": true,
 }
 
 // categorise gives a group a plain-language cause.
@@ -228,9 +229,19 @@ func looksGenerated(spec string) bool {
 			return true
 		}
 	}
-	// Astro writes its runtime scripts as "*.prebuilt.js" and
-	// "*.prebuilt-dev.js" during a build; no directory name gives that away.
-	return strings.Contains(spec, ".prebuilt")
+	// Names that mark a file as generated regardless of directory: Astro's
+	// "*.prebuilt.js", and the widespread "*.gen.ts" / "*.generated.ts"
+	// convention used by GraphQL codegen and friends.
+	base := spec
+	if i := strings.LastIndex(spec, "/"); i >= 0 {
+		base = spec[i+1:]
+	}
+	for _, marker := range []string{".prebuilt", ".gen.", ".generated.", "-generated."} {
+		if strings.Contains(base, marker) {
+			return true
+		}
+	}
+	return strings.HasSuffix(base, ".gen") || strings.HasSuffix(base, ".generated")
 }
 
 func specifierIsTemplate(spec string) bool {
