@@ -1,7 +1,9 @@
 package mcp
 
 import (
+	"bufio"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -199,5 +201,47 @@ func TestOverviewNamesTheModules(t *testing.T) {
 	if strings.Contains(out, "\n   → ") || strings.Contains(out, "  → ") &&
 		strings.Contains(out, "\n  →") {
 		t.Errorf("a module edge is missing one side:\n%s", out)
+	}
+}
+
+// A json.Decoder over the stream cannot survive a syntax error: its buffer
+// still holds the bad bytes, so every later Decode fails on the same ones and
+// the loop never reaches the next request. Measured before the fix: one
+// malformed frame and the server never answered again, at 0% CPU, silently —
+// any client writing a stray byte to the pipe took the whole session with it.
+func TestAMalformedFrameDoesNotWedgeTheStream(t *testing.T) {
+	s := fixture(t)
+	in := strings.NewReader(strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize"}`,
+		`{not json at all`,
+		``,
+		`[1,2,3]`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
+	}, "\n") + "\n")
+	var out strings.Builder
+	s.in = bufio.NewReader(in)
+	s.out = &out
+	s.log = io.Discard
+
+	if err := s.Serve(); err != nil {
+		t.Fatalf("Serve returned %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected replies to the two well-formed requests, got %d:\n%s",
+			len(lines), out.String())
+	}
+	var last struct {
+		ID     int            `json:"id"`
+		Result map[string]any `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(lines[1]), &last); err != nil {
+		t.Fatalf("the reply after the bad frames is not valid JSON: %v", err)
+	}
+	if last.ID != 2 {
+		t.Errorf("ids desynchronised: the second reply is id %d, want 2", last.ID)
+	}
+	if last.Result["tools"] == nil {
+		t.Error("the request after the malformed frames was not answered")
 	}
 }

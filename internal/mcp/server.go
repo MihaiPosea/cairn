@@ -99,16 +99,31 @@ func (s *Server) Serve() error {
 	fmt.Fprintf(s.log, "cairn: %d files, %d imports — ready\n",
 		s.res.FilesScanned, s.res.ImportsFound)
 
-	dec := json.NewDecoder(s.in)
+	// Line-delimited frames, read and parsed one at a time.
+	//
+	// A json.Decoder over the stream cannot survive a syntax error. Its buffer
+	// still holds the bad bytes, so every later Decode fails on the same ones
+	// and the loop can never reach the next request — measured: one malformed
+	// frame and the server never answered again, at 0% CPU, silently. Any
+	// client that writes a stray byte to the pipe would take the whole agent
+	// session with it.
+	//
+	// Reading a line at a time makes the damage exactly one request wide.
 	for {
-		var req request
-		if err := dec.Decode(&req); err != nil {
+		line, err := s.in.ReadString('\n')
+		if err != nil && line == "" {
 			if err == io.EOF {
 				return nil
 			}
-			// A malformed frame is not fatal: the client may recover, and
-			// exiting would take the whole session with it.
-			fmt.Fprintf(s.log, "cairn: bad request: %v\n", err)
+			return err
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var req request
+		if err := json.Unmarshal([]byte(line), &req); err != nil {
+			fmt.Fprintf(s.log, "cairn: skipping unparseable frame: %v\n", err)
 			continue
 		}
 		// A notification has no id and takes no reply.

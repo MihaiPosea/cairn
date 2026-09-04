@@ -7,9 +7,9 @@
         "./cmd/cairn",
         "mcp",
         "--dir",
-        "REPLACE_WITH_TARGET_REPO_PATH"
+        "/private/tmp/claude-501/-Users-mihaiposea/150eeeb9-87b3-4868-be45-4e6f2a8fefc3/scratchpad/realrepos/vue-core"
       ],
-      "cwd": "REPLACE_WITH_CAIRN_REPO_ROOT"
+      "cwd": "/Users/mihaiposea/repos/cairn"
     }
   }
 }
