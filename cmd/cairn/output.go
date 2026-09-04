@@ -845,3 +845,52 @@ func runGrep(res *scan.Result, pattern, anchor string, connected, ignoreCase boo
 		r.Connected, r.Unrelated, r.Searched, r.OfFiles)
 	return nil
 }
+
+// runLadder shows where a file sits: two levels up, two levels down.
+func runLadder(res *scan.Result, file string, asJSON bool) error {
+	mm := modules.Build(res)
+	l, err := agent.BuildLadder(res, mm, file)
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		return emit(l)
+	}
+
+	name := file
+	if i := strings.LastIndexByte(file, '/'); i >= 0 {
+		name = file[i+1:]
+	}
+	fmt.Printf("\n  %s", name)
+	if l.Module != "" {
+		fmt.Printf("   in %s", l.Module)
+	}
+	fmt.Println()
+	fmt.Println()
+
+	rung := func(lv agent.Level, mark, label string) {
+		fmt.Printf("  %-4s %4d   %s\n", mark, lv.Count, label)
+		for i, f := range lv.Files {
+			if i >= 4 {
+				fmt.Printf("            … and %d more\n", lv.Count-4)
+				break
+			}
+			fmt.Printf("            %s\n", f)
+		}
+		if lv.Count > 4 && len(lv.Modules) > 1 {
+			fmt.Printf("            across %s\n", strings.Join(lv.Modules, ", "))
+		}
+	}
+
+	// Up first, printed above the file, because that is where it sits: the
+	// things standing on it are drawn over it, the things it stands on below.
+	rung(l.Up[1], "▲▲", "two levels up — who needs the things that need this")
+	rung(l.Up[0], "▲", "one level up — who needs this directly")
+	fmt.Printf("\n  ●         %s\n\n", file)
+	rung(l.Down[0], "▼", "one level down — what this stands on")
+	rung(l.Down[1], "▼▼", "two levels down — what those stand on")
+
+	fmt.Printf("\n  %s\n", l.Verdict)
+	fmt.Printf("  %d files above it in total, %d below.\n\n", l.Reach, l.Depends)
+	return nil
+}

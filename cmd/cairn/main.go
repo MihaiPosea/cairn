@@ -28,6 +28,7 @@ usage:
   cairn verify                  check cairn's graph against TypeScript's own resolver
   cairn serve                   open the graph in a browser
   cairn export <file.html>      write a standalone page you can send someone
+  cairn ladder <file>           where this file sits: two levels up, two down
   cairn grep <pat> --from <f>   search, ordered by what is connected to <f>
   cairn drift --base main       what this change did to the architecture
   cairn context <file>          what to read before changing this file
@@ -180,6 +181,15 @@ func run(args []string) error {
 		}
 		return withScan(root, *sizes, func(res *scan.Result) error {
 			return exportGraph(res, target, *withPkgs)
+		})
+
+	case "ladder":
+		target, err := needsArg()
+		if err != nil {
+			return err
+		}
+		return withScan(root, false, func(res *scan.Result) error {
+			return runLadder(res, target, *asJSON)
 		})
 
 	case "grep":

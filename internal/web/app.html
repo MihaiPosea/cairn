@@ -225,6 +225,22 @@
 
   #minilabel { position:absolute; right:18px; bottom:180px; font:10px var(--font-sans);
                letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-faint); }
+  .rung { display:flex; align-items:baseline; gap:8px; padding:4px 0; }
+  .rung .rm { width:20px; color:var(--ink-faint); font:11px var(--font-mono); }
+  .rung .rc { min-width:26px; font:12px var(--font-mono); color:var(--ink);
+              font-variant-numeric:tabular-nums; }
+  .rung .rl { font:11.5px var(--font-sans); color:var(--ink-soft); }
+  .rung.here { border-top:1px solid var(--rule); border-bottom:1px solid var(--rule);
+               margin:3px 0; padding:6px 0; }
+  .rung.here .rm, .rung.here .rl { color:var(--ink); }
+  ul.rf { list-style:none; margin:0 0 6px 28px; padding:0; }
+  ul.rf li { font:11.5px var(--font-mono); color:var(--ink-2); padding:2px 0; cursor:pointer;
+             overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  ul.rf li:hover { color:var(--accent); }
+  ul.rf li.more { color:var(--ink-faint); cursor:default; }
+  ul.rf .d { color:var(--ink-faint); }
+  .verdict { font:12.5px/1.5 var(--font-sans); color:var(--ink); margin:10px 0 0; }
+  .verdict.sub { color:var(--ink-faint); font-size:11.5px; margin-top:3px; }
   .legend { display:flex; gap:16px; padding:9px 22px; border-top:1px solid var(--rule);
             background:var(--surface); font:11.5px var(--font-sans);
             color:var(--ink-faint); flex-shrink:0; align-items:center; }
@@ -1728,6 +1744,91 @@ function renderFolder(panel, x) {
   wire(panel);
 }
 
+// Where a file sits: two rungs above, two below.
+//
+// "Understand two levels up and two levels down" is a maxim about seniority,
+// and in a codebase it is not a metaphor — a level is a position in the import
+// graph and two levels is two hops. Editors solved down thirty years ago:
+// cmd-click and you are in the file a name came from. Nothing solved up, so
+// everyone knows what they are standing on and almost nobody knows what is
+// standing on them.
+//
+// The verdict at the bottom is the part that matters. Vue's looseEqual.ts has
+// exactly one direct importer, which every "find references" would report as
+// one result and imply was safe, and 462 files above it once you follow the
+// barrel it is re-exported through.
+function ladderOf(id) {
+  const up = new Map(), down = new Map();
+  for (const e of DATA.edges) {
+    (up.get(e.to) || up.set(e.to, []).get(e.to)).push(e.from);
+    (down.get(e.from) || down.set(e.from, []).get(e.from)).push(e.to);
+  }
+  const walk = (m, n) => {
+    const seen = new Set([id]);
+    let cur = [id];
+    const out = [];
+    for (let d = 0; d < n; d++) {
+      const rung = [];
+      for (const x of cur) for (const y of (m.get(x) || [])) {
+        if (seen.has(y)) continue;
+        seen.add(y); rung.push(y);
+      }
+      out.push(rung.sort());
+      cur = rung;
+    }
+    // Everything above or below, not only the two rungs: the total is what
+    // says whether the file is load-bearing.
+    let all = 0, q = [id]; const s2 = new Set([id]);
+    while (q.length) {
+      const x = q.shift();
+      for (const y of (m.get(x) || [])) if (!s2.has(y)) { s2.add(y); all++; q.push(y); }
+    }
+    return { rungs: out, total: all };
+  };
+  const u = walk(up, 2), d = walk(down, 2);
+  const share = files.length ? u.total / files.length : 0;
+  const n = byId.get(id) || {};
+  let verdict;
+  if (n.entry && u.rungs[0].length === 0)
+    verdict = 'An entry point — nothing imports it because it is where the outside world comes in.';
+  else if (u.rungs[0].length === 0)
+    verdict = 'Nothing imports this. Either it is reached in a way no static tool can see, or it has fallen out of the program.';
+  else if ((share >= 0.25 && u.total >= 10) || u.total >= 200)
+    verdict = 'A foundation. A change here is felt a long way from where you make it.';
+  else if ((share >= 0.05 && u.total >= 5) || u.total >= 40)
+    verdict = 'Load-bearing. Enough depends on this that a change wants a reason and a test.';
+  else if (u.rungs[0].length <= 2 && d.total <= 5)
+    verdict = 'A leaf. The cheapest kind of file to change.';
+  else
+    verdict = 'Ordinary. A handful of files either side.';
+  return { up: u, down: d, share, verdict };
+}
+
+function renderLadder(id) {
+  const L = ladderOf(id);
+  const rung = (ids, mark, label) => {
+    const names = ids.slice(0, 5).map(i => {
+      const t = byId.get(i) || groups.get(i);
+      return `<li data-go="${esc(i)}">${esc(t ? t.base : i.replace(/^file:/, ''))}` +
+             `<span class="d"> ${esc(t && t.dir ? t.dir : '')}</span></li>`;
+    }).join('');
+    return `<div class="rung"><span class="rm">${mark}</span>` +
+           `<span class="rc">${ids.length}</span><span class="rl">${label}</span></div>` +
+           (ids.length ? `<ul class="rf">${names}` +
+             (ids.length > 5 ? `<li class="more">… and ${ids.length - 5} more</li>` : '') +
+             `</ul>` : '');
+  };
+  return `<h3>where this sits</h3>` +
+    rung(L.up.rungs[1], '▲▲', 'two levels up') +
+    rung(L.up.rungs[0], '▲', 'one level up — needs this directly') +
+    `<div class="rung here"><span class="rm">●</span><span class="rl">this file</span></div>` +
+    rung(L.down.rungs[0], '▼', 'one level down — what it stands on') +
+    rung(L.down.rungs[1], '▼▼', 'two levels down') +
+    `<p class="verdict">${esc(L.verdict)}</p>` +
+    `<p class="verdict sub">${L.up.total} files above it, ${L.down.total} below` +
+    (L.share >= 0.02 ? ` — ${(L.share * 100).toFixed(0)}% of the repository` : '') + `.</p>`;
+}
+
 function renderPanel(x) {
   const panel = document.getElementById('panel');
   if (!x) {
@@ -1786,6 +1887,7 @@ function renderPanel(x) {
           `>${ln}<span class="who">${who}</span>${code}</div>`;
       }).join('');
   };
+  html += renderLadder(x.id);
   html += list('imported by', dependents, 'from', 'in');
   html += list('imports', deps, 'to', 'out');
   if (!DATA.exported) {

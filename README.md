@@ -10,6 +10,7 @@ cairn works that layer out from the code itself. Point it at a repo it has never
 nothing to adopt.
 
 ```
+cairn ladder <file>                  where this file sits: two levels up, two levels down
 cairn grep <pattern> --from <file>   search, ordered by what is connected to that file
 cairn scope <file>                   the only files a search must cover — pipe it into grep
 cairn context <file>                 what to read before changing this file
@@ -28,6 +29,51 @@ cairn export graph.html              one file you can send anyone, no server nee
 ```
 
 Every command takes `--json`.
+
+---
+
+## Two levels up, two levels down
+
+"Understand two levels up and two levels down" is usually said as a maxim about
+seniority. In a codebase it is not a metaphor: a level is a position in the import
+graph, and two levels is two hops. Down is what a file stands on. Up is what stands
+on it.
+
+Editors solved down thirty years ago. Cmd-click a name and you are in the file it
+came from — one hop, instantly, in every editor. **Nothing solved up.** Find-references
+is symbol-level and noisy; it cannot say "one file needs this, and 166 more need
+that one", and it certainly cannot do two levels.
+
+So everyone knows what they are standing on, because they wrote the import, and
+almost nobody knows what is standing on them.
+
+```
+$ cairn ladder packages/shared/src/looseEqual.ts
+
+  ▲▲    166   two levels up — who needs the things that need this
+  ▲       1   one level up — who needs this directly
+              packages/shared/src/index.ts
+
+  ●         packages/shared/src/looseEqual.ts
+
+  ▼       1   one level down — what this stands on
+  ▼▼      1   two levels down
+
+  A foundation. It carries a large part of the repository, and a change here is
+  felt a long way from where you make it.
+  462 files above it in total, 2 below — 85% of the repository.
+```
+
+One direct importer. Every editor's find-references shows that single result and
+implies the file is safe to change. It is 85% of Vue.
+
+The verdict reads the *share* of the repository above a file rather than the count,
+because thirty files above you is the whole world in a small repo and a corner of a
+large one — with a floor under it, since in a two-file repository everything is half
+of it.
+
+The same view is in the browser: click any file and it becomes the centre, two rungs
+above and two below, each one clickable to walk to.
 
 ---
 
