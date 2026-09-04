@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/MihaiPosea/cairn/internal/mcp"
 	"github.com/MihaiPosea/cairn/internal/scan"
 )
 
@@ -28,6 +29,7 @@ usage:
   cairn verify                  check cairn's graph against TypeScript's own resolver
   cairn serve                   open the graph in a browser
   cairn export <file.html>      write a standalone page you can send someone
+  cairn mcp                     serve the graph to a coding agent over stdio
   cairn ladder <file>           where this file sits: two levels up, two down
   cairn grep <pat> --from <f>   search, ordered by what is connected to <f>
   cairn drift --base main       what this change did to the architecture
@@ -182,6 +184,13 @@ func run(args []string) error {
 		return withScan(root, *sizes, func(res *scan.Result) error {
 			return exportGraph(res, target, *withPkgs)
 		})
+
+	case "mcp":
+		srv, err := mcp.New(root)
+		if err != nil {
+			return err
+		}
+		return srv.Serve()
 
 	case "ladder":
 		target, err := needsArg()

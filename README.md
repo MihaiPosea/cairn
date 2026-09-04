@@ -10,6 +10,7 @@ cairn works that layer out from the code itself. Point it at a repo it has never
 nothing to adopt.
 
 ```
+cairn mcp                            serve the graph to a coding agent over stdio
 cairn ladder <file>                  where this file sits: two levels up, two levels down
 cairn grep <pattern> --from <file>   search, ordered by what is connected to that file
 cairn scope <file>                   the only files a search must cover — pipe it into grep
@@ -74,6 +75,40 @@ of it.
 
 The same view is in the browser: click any file and it becomes the centre, two rungs
 above and two below, each one clickable to walk to.
+
+---
+
+## For an agent
+
+Two things have to be true before an agent can use any of this, and the CLI
+satisfies neither.
+
+It has to be **fast enough to ask repeatedly**. Every CLI invocation rebuilds the
+graph — 0.09s on a small repository, 1.34s on nx. Fine once, useless ten times
+while an agent works something out.
+
+It has to be **cheap enough to read**. One ladder rendered for a terminal is about
+2,650 tokens, because it lists all 166 files on the far rung.
+
+`cairn mcp` scans once and holds the graph:
+
+| | CLI | MCP |
+|---|---|---|
+| per query, nx at 5,467 files | 1,340 ms | **0.6–3.7 ms** |
+| tokens for one ladder | 2,652 | **208** |
+
+```
+claude mcp add cairn -- cairn mcp --dir /path/to/repo
+```
+
+Tools: `ladder`, `blast`, `context`, `scope`, `search`, `overview`, `rescan`.
+
+The replies are deliberately compact — counts carry the meaning, and the file
+lists are recoverable by asking again about whatever looked interesting.
+`overview` is the one to read first in an unfamiliar codebase: the modules, their
+sizes, what depends on what, and the cycle count.
+
+Hand-rolled JSON-RPC over stdio. No new dependencies — the binary still has two.
 
 ---
 
