@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "cairn": {
+      "command": "go",
+      "args": [
+        "run",
+        "./cmd/cairn",
+        "mcp",
+        "--dir",
+        "REPLACE_WITH_TARGET_REPO_PATH"
+      ],
+      "cwd": "REPLACE_WITH_CAIRN_REPO_ROOT"
+    }
+  }
+}
