@@ -30,12 +30,40 @@ type Workspace struct {
 // Both conventions are read — npm/yarn/bun put a "workspaces" array in
 // package.json, pnpm uses pnpm-workspace.yaml — because a repo may have either.
 func findWorkspaces(root string) map[string]*Workspace {
-	patterns := append(npmWorkspacePatterns(root), pnpmWorkspacePatterns(root)...)
-	if len(patterns) == 0 {
-		return nil
+	out := map[string]*Workspace{}
+
+	// A package may import itself by its own name. Node allows it whenever the
+	// manifest has an "exports" field, and libraries with subpath exports use
+	// it constantly: preact's own sources say `import "preact/compat"` rather
+	// than reaching across the tree with `../../compat/src`.
+	//
+	// Without this the specifier looks like any other bare name and resolves to
+	// an external package, so the edge leaves the repository and the file it
+	// actually points at appears to have one fewer dependent. Measured against
+	// the TypeScript compiler on preact: 88% of all disagreements, and the
+	// repository scored 49% until it was handled.
+	if self := readWorkspace(root); self != nil && self.Name != "" {
+		if raw, err := os.ReadFile(filepath.Join(root, "package.json")); err == nil {
+			var pkg struct {
+				Exports json.RawMessage `json:"exports"`
+			}
+			// Only with an exports field: that is the condition Node puts on
+			// self-reference, and honouring it keeps the behaviour the same as
+			// the runtime's.
+			if json.Unmarshal(raw, &pkg) == nil && len(pkg.Exports) > 0 {
+				out[self.Name] = self
+			}
+		}
 	}
 
-	out := map[string]*Workspace{}
+	patterns := append(npmWorkspacePatterns(root), pnpmWorkspacePatterns(root)...)
+	if len(patterns) == 0 {
+		if len(out) == 0 {
+			return nil
+		}
+		return out
+	}
+
 	for _, pattern := range patterns {
 		if strings.HasPrefix(pattern, "!") {
 			continue // negations are rare; ignoring one costs an extra package, not correctness

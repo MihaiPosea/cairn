@@ -224,8 +224,45 @@ improvement — that would turn a clear regression into a wash.
 **Every scan prints an unresolved rate** — the share of specifiers cairn could not resolve.
 Resolution in JavaScript is genuinely hard, and any tool claiming perfection is hiding its misses.
 
-**`cairn verify` diffs the graph against TypeScript's own resolver**, specifier by specifier: 100%
-precision and recall across 10,442 imports. The harness was tested by sabotage, because a verifier
+**`cairn verify` diffs the graph against TypeScript's own resolver**, specifier by specifier.
+Eleven repositories with their real dependencies installed, 18,199 specifiers:
+
+| | precision | recall | specifiers |
+|---|---|---|---|
+| ky | 98.93% | 98.93% | 187 |
+| vuejs/core | 97.77% | 98.27% | 2,136 |
+| zod | 97.11% | 97.31% | 1,411 |
+| jotai | 96.43% | 96.43% | 644 |
+| hono | 95.86% | 95.47% | 1,232 |
+| mobx | 91.82% | 90.79% | 440 |
+| rollup | 85.01% | 72.81% | 9,273 |
+| solid | 83.39% | 83.09% | 271 |
+| axios | 82.79% | 82.67% | 703 |
+| fastify | 79.83% | 79.64% | 1,205 |
+| preact | 49.64% | 49.64% | 697 |
+| **median** | **91.82%** | **90.79%** | |
+
+An earlier reading of 100% came from a smaller set and is not reproducible; ~91% on a run with
+only the compiler installed is also wrong, in the other direction. These are the numbers.
+
+**What the low scores are.** Preact is the instructive one. It ships `src/index.js` — 423 bytes of
+actual code — beside `src/index.d.ts`, 10,742 bytes of types, and eleven such pairs across the
+repository. Asked to resolve `../src/index`, cairn answers `index.js` and `tsc` answers
+`index.d.ts`. Both are right about their own question: `tsc` is a type resolver and a `.d.ts` is
+what it wants; cairn is a dependency resolver and a `.d.ts` has no runtime behaviour, so changing
+it breaks nothing.
+
+So the score measures agreement with a type resolver, and where a repository ships declarations
+beside implementations the two disagree by construction. That is a limit of the oracle, not a
+defect the number is hiding — and it is reported at face value rather than filtered, because an
+oracle you are allowed to overrule is not an oracle.
+
+Fixed while measuring this: a package importing **itself** by name — `import "preact/compat"`
+inside preact — resolved to an external package rather than to the local file. Node permits
+self-reference whenever the manifest has an `exports` field, and libraries with subpath exports
+use it constantly.
+
+The harness was tested by sabotage, because a verifier
 that cannot fail proves nothing — corrupting alias substitution dropped precision to 2.83%.
 
 **Advice is labelled by confidence.** `cairn dead` refuses to answer when a repo has no entry

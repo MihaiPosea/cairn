@@ -290,3 +290,57 @@ func keysOfSet(m map[string]bool) []string {
 	sort.Strings(out)
 	return out
 }
+
+// A package may import itself by name. Node allows it whenever the manifest
+// has an "exports" field, and libraries with subpath exports rely on it:
+// preact's own sources say `import "preact/compat"` rather than reaching
+// across the tree with a relative path.
+//
+// Read as an ordinary bare specifier it resolves to an external package, so
+// the edge leaves the repository and the file it really points at loses a
+// dependent.
+func TestAPackageCanImportItselfByName(t *testing.T) {
+	root := repo(t, map[string]string{
+		"package.json": `{
+			"name": "mylib",
+			"exports": { ".": "./src/index.ts", "./helper": "./src/helper.ts" }
+		}`,
+		"src/index.ts":  `export const i = 1;`,
+		"src/helper.ts": `export const h = 1;`,
+		"src/use.ts":    `import { h } from "mylib/helper"; import { i } from "mylib";`,
+	})
+	r, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ spec, want string }{
+		{"mylib", "src/index.ts"},
+		{"mylib/helper", "src/helper.ts"},
+	} {
+		got := r.Resolve("src/use.ts", c.spec)
+		if got.Kind != ToFile {
+			t.Errorf("%q resolved to %v, not a local file", c.spec, got.Kind)
+			continue
+		}
+		if got.Path != c.want {
+			t.Errorf("%q resolved to %q, want %q", c.spec, got.Path, c.want)
+		}
+	}
+}
+
+// Without an exports field Node does not permit self-reference, so neither
+// should this — treating the name as external is then the correct answer.
+func TestSelfReferenceNeedsAnExportsField(t *testing.T) {
+	root := repo(t, map[string]string{
+		"package.json": `{"name":"mylib","main":"./src/index.ts"}`,
+		"src/index.ts": `export const i = 1;`,
+		"src/use.ts":   `import { i } from "mylib";`,
+	})
+	r, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := r.Resolve("src/use.ts", "mylib"); got.Kind == ToFile {
+		t.Errorf("no exports field, so mylib is an external package; resolved to %q", got.Path)
+	}
+}
