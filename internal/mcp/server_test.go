@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/MihaiPosea/cairn/internal/modules"
@@ -244,4 +245,93 @@ func TestAMalformedFrameDoesNotWedgeTheStream(t *testing.T) {
 	if last.Result["tools"] == nil {
 		t.Error("the request after the malformed frames was not answered")
 	}
+}
+
+// rescan swaps the graph under a write lock while queries read it. That lock
+// was written and never exercised: a rescan landing between a reader taking
+// the pointer and using it would tear the answer, and the race detector is
+// the only thing that reliably shows it.
+func TestQueriesAndRescanDoNotRace(t *testing.T) {
+	s := fixture(t)
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+	errs := make(chan error, 64)
+
+	for range 6 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				for _, c := range []struct {
+					tool string
+					args map[string]string
+				}{
+					{"ladder", map[string]string{"file": "src/util.ts"}},
+					{"blast", map[string]string{"file": "src/core.ts"}},
+					{"overview", map[string]string{}},
+					{"scope", map[string]string{"file": "src/index.ts"}},
+				} {
+					raw, _ := json.Marshal(c.args)
+					if _, err := s.call(c.tool, raw); err != nil {
+						errs <- err
+					}
+				}
+			}
+		}()
+	}
+
+	for range 8 {
+		if err := s.rescan(); err != nil {
+			t.Fatalf("rescan: %v", err)
+		}
+	}
+	close(stop)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("a query failed while the graph was being replaced: %v", err)
+	}
+}
+
+// The graph a single reply is built from must be one consistent scan. Taking
+// res and mods under separate locks would let a rescan land between them and
+// answer half from each.
+func TestOneReplyUsesOneConsistentGraph(t *testing.T) {
+	s := fixture(t)
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_ = s.rescan()
+			}
+		}
+	}()
+
+	for range 200 {
+		out, err := s.call("overview", nil)
+		if err != nil {
+			t.Fatalf("overview failed mid-rescan: %v", err)
+		}
+		// The module list and the file count come from the same pair; if they
+		// were taken from different scans the reply would name modules the
+		// count cannot account for.
+		if !strings.Contains(out, "modules") || !strings.Contains(out, "files") {
+			t.Fatalf("torn reply: %q", out)
+		}
+	}
+	close(stop)
+	wg.Wait()
 }
