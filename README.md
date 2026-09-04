@@ -105,6 +105,11 @@ Tools: `ladder`, `blast`, `context`, `scope`, `search`, `overview`, `rescan`.
 
 The replies are deliberately compact — counts carry the meaning, and the file
 lists are recoverable by asking again about whatever looked interesting.
+
+Every token figure quoted here is an **MCP reply**. The CLI's `--json` output is a different
+thing and much larger: `blast --json` runs to a median of about 6,600 tokens because it lists
+every affected path. That is the right shape for a pipeline and the wrong shape for a context
+window, which is the reason this server exists.
 `overview` is the one to read first in an unfamiliar codebase: the modules, their
 sizes, what depends on what, and the cycle count.
 
@@ -171,7 +176,7 @@ checks separately against the TypeScript compiler.
 | recall, mean | 30% | 100% |
 | questions where it found nothing at all | **42 of 194** | — |
 | tokens read, total | **507,826,801** | **30,523** |
-| per answer | — | 149 tokens |
+| per answer, over MCP | — | 149 tokens |
 | latency over MCP | — | 0.5 ms |
 
 What separates the repositories is not size — it is how they write imports.
@@ -265,9 +270,23 @@ improvement — that would turn a clear regression into a wash.
 **Every scan prints an unresolved rate** — the share of specifiers cairn could not resolve.
 Resolution in JavaScript is genuinely hard, and any tool claiming perfection is hiding its misses.
 
-**`cairn verify` diffs the graph against TypeScript's own resolver**, specifier by specifier: 100%
-precision and recall across 10,442 imports. The harness was tested by sabotage, because a verifier
-that cannot fail proves nothing — corrupting alias substitution dropped precision to 2.83%.
+**`cairn verify` diffs the graph against TypeScript's own resolver**, specifier by specifier. On
+vuejs/core with a full pnpm install — 2,136 specifiers compared against TypeScript 6.0.3 —
+**97.77% precision and 98.27% recall**, exercising relative, tsconfig-paths, bare, node-prefix and
+workspace-subpath rules.
+
+An earlier reading of 100% is not reproduced and should not be quoted. Nor should ~91%, which came
+from a run with only the compiler installed rather than the repository's real dependency tree;
+that biases bare specifiers toward unresolved on the oracle's side.
+
+Of the 31 disagreements on Vue, five are Vite query suffixes (`./template/main.js?raw`) where
+cairn resolves the file and `tsc` does not — arguably cairn being right about a Vite project and
+the oracle being wrong about it. The remaining 21 are bare specifiers (`vue`, `@babel/types`,
+`sass`) inside a nested playground package. They are counted as disagreements either way, because
+an oracle you argue with is not an oracle.
+
+The harness was tested by sabotage, because a verifier that cannot fail proves nothing —
+corrupting alias substitution dropped precision to 2.83%.
 
 **Advice is labelled by confidence.** `cairn dead` refuses to answer when a repo has no entry
 points, rather than declaring every file dead. `cairn affected` refuses when the graph is
