@@ -157,6 +157,47 @@ trusted.
 **Neither half works alone.** The graph has no idea what any file means. grep has no idea which
 file the import on line three refers to.
 
+### Measured on 50 repositories
+
+Cloned fresh, 194 questions of the form *"list every file that breaks if I change this
+one"*. The grep route is implemented the way a careful agent would work it — grep the
+basename, read every hit, keep the ones whose import actually resolves back, recurse —
+and every byte it reads is counted. Ground truth is cairn's graph, which `cairn verify`
+checks separately against the TypeScript compiler.
+
+| | grep, done carefully | cairn |
+|---|---|---|
+| recall, median | **14%** | 100% |
+| recall, mean | 30% | 100% |
+| questions where it found nothing at all | **42 of 194** | — |
+| tokens read, total | **507,826,801** | **30,523** |
+| per answer | — | 149 tokens |
+| latency over MCP | — | 0.5 ms |
+
+What separates the repositories is not size — it is how they write imports.
+
+| grep does well | grep finds nothing |
+|---|---|
+| immer 100%, axios 97% | shadcn 0%, astro 0% |
+| tldraw 91%, fastify 85% | nest 0%, zod 0% |
+| **rollup 82%, at 12,750 files** | solid 0%, vitest 0% |
+
+Rollup is 12,750 files and grep recovers 82% of the answer; shadcn is 3,946 and it
+recovers none. Relative imports (`./utils`) are followable by string manipulation.
+Aliases, barrel re-exports and dynamic imports (`@/x`, `export *`, `await import(...)`)
+are not — and grep does not report that it could not follow them. It returns a short
+answer and stops.
+
+Three things to hold against these numbers. Twenty of the 194 runs hit a 3,000-file read
+cap, so those recalls are floors rather than final. The grep route resolves relative
+paths only; one that parsed `tsconfig.json` would score better, though writing it means
+writing a resolver. And one repository, mui/material-ui, failed to measure for harness
+reasons and is excluded — 49 of 50 counted.
+
+Also across those 50: **0 scan failures**, 423,697 imports, 0.12% median unresolved.
+
+`bench/fifty.py` reproduces all of it; `bench/fifty-results.jsonl` is the raw output.
+
 ### Measured on 34 repositories
 
 React, Angular, Vue, Svelte, Solid, Preact, Vite, Rollup, Astro, Nuxt, React Router, TanStack
