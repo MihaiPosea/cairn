@@ -14,7 +14,7 @@
      Dark is the default because that design has no light mode; the light
      variant here is its own earlier palette rather than an invention. */
   :root {
-    --rail:44px; --head:0px;
+    --rail:44px; --head:38px;
     color-scheme:dark;
     --paper:#080808; --surface:#101010; --surface-2:#141414; --surface-3:#191919;
     --ink:#ededed; --ink-2:#8c8c8c; --ink-soft:#8c8c8c; --ink-faint:#5a5a5a;
@@ -144,13 +144,13 @@
   /* The controls that were in the header now sit at the right of the
      breadcrumb, so the whole top of the window is one bar instead of two
      mostly-empty ones. */
-  #bar { position:fixed; top:0; right:0; height:38px; display:flex; align-items:center;
+  #bar { position:fixed; top:0; right:0; height:var(--head); display:flex; align-items:center;
          gap:8px; padding:0 14px 0 0; z-index:41; }
   #bar input { width:150px; }
-  .brand { position:fixed; top:0; left:var(--rail); height:38px; z-index:41;
+  .brand { position:fixed; top:0; left:0; height:var(--head); z-index:42;
            display:flex; align-items:center; padding:0 14px 0 16px;
            font:620 14px/1 var(--font-sans); letter-spacing:-0.01em; color:var(--ink); }
-  #chips { padding-left:78px; padding-right:290px; }
+  #chips { padding-left:calc(var(--rail) + 12px); padding-right:290px; }
 
   #views {
     position:fixed; left:0; top:var(--head); bottom:0; width:var(--rail);
@@ -158,16 +158,19 @@
     padding-top:8px; background:var(--surface); border-right:1px solid var(--rule);
     z-index:40; overflow:hidden; transition:width .13s ease;
   }
-  #views:hover, #views:focus-within { width:150px; }
+  #views:hover, #views:focus-within { width:186px; }
   .view {
     display:flex; align-items:center; gap:11px; flex:none;
-    padding:9px 0 9px 12px; border:0; background:none; color:var(--ink-2);
+    padding:8px 0 8px 12px; border:0; background:none; color:var(--ink-2);
     font:600 13px var(--font-sans); letter-spacing:-0.01em; white-space:nowrap;
     border-left:2px solid transparent; text-align:left;
   }
   .view i { font-style:normal; width:14px; flex:none; text-align:center;
             font-size:12px; color:var(--ink-faint); }
-  .view b { font-weight:600; opacity:0; transition:opacity .13s ease; }
+  .view b { display:flex; flex-direction:column; gap:2px; font-weight:600;
+            opacity:0; transition:opacity .13s ease; }
+  .view em { font:400 10.5px/1.3 var(--font-sans); font-style:normal;
+             color:var(--ink-faint); }
   #views:hover .view b, #views:focus-within .view b { opacity:1; }
   .view:hover { color:var(--ink); background:var(--surface-2); }
   .view.on { color:var(--ink); border-left-color:var(--accent); }
@@ -313,12 +316,12 @@
 </head>
 <body>
 <nav id="views">
-  <button class="view on" data-tab="graph" title="Walk the repo one level at a time">
-    <i>▤</i><b>explore</b></button>
-  <button class="view" data-tab="map" title="Every file at once, coloured by module">
-    <i>▦</i><b>whole repo</b></button>
-  <button class="view" data-tab="report" title="Cycles, dead code, blast radius">
-    <i>▲</i><b>findings</b></button>
+  <button class="view on" data-tab="graph">
+    <i>▤</i><b>explore<em>one level at a time</em></b></button>
+  <button class="view" data-tab="map">
+    <i>▦</i><b>whole repo<em>every file at once</em></b></button>
+  <button class="view" data-tab="report">
+    <i>▲</i><b>findings<em>cycles, dead code, blast</em></b></button>
 </nav>
 <span class="brand" id="repo" title="{{.Root}}">cairn</span>
 <div id="chips"></div>
