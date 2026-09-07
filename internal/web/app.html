@@ -14,6 +14,7 @@
      Dark is the default because that design has no light mode; the light
      variant here is its own earlier palette rather than an invention. */
   :root {
+    --rail:44px; --head:0px;
     color-scheme:dark;
     --paper:#080808; --surface:#101010; --surface-2:#141414; --surface-3:#191919;
     --ink:#ededed; --ink-2:#8c8c8c; --ink-soft:#8c8c8c; --ink-faint:#5a5a5a;
@@ -136,6 +137,42 @@
   button { cursor:pointer; }
   button:hover { border-color:var(--rule-strong); background:var(--surface-3); color:var(--ink); }
 
+  /* The view switcher lives down the left edge rather than stranded at the far
+     right of a very wide header. Collapsed it is a strip of glyphs; hovering
+     or focusing it widens to show the labels, over the canvas rather than
+     pushing it, so the graph never reflows on a mouse move. */
+  /* The controls that were in the header now sit at the right of the
+     breadcrumb, so the whole top of the window is one bar instead of two
+     mostly-empty ones. */
+  #bar { position:fixed; top:0; right:0; height:38px; display:flex; align-items:center;
+         gap:8px; padding:0 14px 0 0; z-index:41; }
+  #bar input { width:150px; }
+  .brand { position:fixed; top:0; left:var(--rail); height:38px; z-index:41;
+           display:flex; align-items:center; padding:0 14px 0 16px;
+           font:620 14px/1 var(--font-sans); letter-spacing:-0.01em; color:var(--ink); }
+  #chips { padding-left:78px; padding-right:290px; }
+
+  #views {
+    position:fixed; left:0; top:var(--head); bottom:0; width:var(--rail);
+    display:flex; flex-direction:column; align-items:stretch; gap:1px;
+    padding-top:8px; background:var(--surface); border-right:1px solid var(--rule);
+    z-index:40; overflow:hidden; transition:width .13s ease;
+  }
+  #views:hover, #views:focus-within { width:150px; }
+  .view {
+    display:flex; align-items:center; gap:11px; flex:none;
+    padding:9px 0 9px 12px; border:0; background:none; color:var(--ink-2);
+    font:600 13px var(--font-sans); letter-spacing:-0.01em; white-space:nowrap;
+    border-left:2px solid transparent; text-align:left;
+  }
+  .view i { font-style:normal; width:14px; flex:none; text-align:center;
+            font-size:12px; color:var(--ink-faint); }
+  .view b { font-weight:600; opacity:0; transition:opacity .13s ease; }
+  #views:hover .view b, #views:focus-within .view b { opacity:1; }
+  .view:hover { color:var(--ink); background:var(--surface-2); }
+  .view.on { color:var(--ink); border-left-color:var(--accent); }
+  .view.on i { color:var(--accent); }
+
   .tabs { margin-left:auto; display:flex; gap:4px; }
   .tab { font:600 13px var(--font-sans); letter-spacing:-0.01em; padding:6px 12px 8px;
          border:0; border-bottom:2px solid transparent; background:none;
@@ -174,6 +211,7 @@
            font-variant-numeric:tabular-nums; letter-spacing:-0.03em; }
   .num span { font:11.5px var(--font-sans); color:var(--ink-faint); }
 
+  #chips, main, #report, .legend { margin-left:var(--rail); }
   #chips {
     display:flex; gap:4px; align-items:center; flex-wrap:wrap;
     padding:9px 22px; border-bottom:1px solid var(--rule); background:var(--surface-2);
@@ -274,19 +312,21 @@
 </style>
 </head>
 <body>
-<header>
-  <span class="brand">cairn</span>
-  <span class="repo" id="repo" title="{{.Root}}">{{.Root}}</span>
+<nav id="views">
+  <button class="view on" data-tab="graph" title="Walk the repo one level at a time">
+    <i>▤</i><b>explore</b></button>
+  <button class="view" data-tab="map" title="Every file at once, coloured by module">
+    <i>▦</i><b>whole repo</b></button>
+  <button class="view" data-tab="report" title="Cycles, dead code, blast radius">
+    <i>▲</i><b>findings</b></button>
+</nav>
+<span class="brand" id="repo" title="{{.Root}}">cairn</span>
+<div id="chips"></div>
+<div id="bar">
   <input id="q" placeholder="filter" autocomplete="off">
   <button id="fit">fit</button>
   <button id="theme" title="light / dark">◐</button>
-  <div class="tabs">
-    <button class="tab on" data-tab="graph" title="Walk the repo one level at a time">explore</button>
-    <button class="tab" data-tab="map" title="Every file at once, coloured by module">whole repo</button>
-    <button class="tab" data-tab="report" title="Cycles, dead code, blast radius">findings</button>
-  </div>
-</header>
-<div id="chips"></div>
+</div>
 <main>
   <div id="stage"><canvas id="c"></canvas><canvas id="mini"></canvas><span id="minilabel">you are here</span>
     <div id="code"><header><button class="chip" id="codeclose">✕ close</button>
@@ -2133,7 +2173,7 @@ addEventListener('keydown', e => {
   if (e.key === 'Home') navigate([]);
 });
 
-for (const t of document.querySelectorAll('.tab')) {
+for (const t of document.querySelectorAll('.view')) {
     t.classList.toggle('on', t.getAttribute('data-tab') === which);
   }
   if (which === 'graph') { resize(); draw(); }
@@ -2196,7 +2236,7 @@ addEventListener('keydown', e => {
   if (e.key === 'Home') navigate([]);
 });
 
-for (const t of document.querySelectorAll('.tab')) {
+for (const t of document.querySelectorAll('.view')) {
   t.onclick = () => showTab(t.getAttribute('data-tab'));
 }
 
