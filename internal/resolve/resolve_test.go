@@ -344,3 +344,64 @@ func TestSelfReferenceNeedsAnExportsField(t *testing.T) {
 		t.Errorf("no exports field, so mylib is an external package; resolved to %q", got.Path)
 	}
 }
+
+// A directory can say where its own entry is. Node reads the package.json
+// inside it and follows main/module/types before falling back to index, and a
+// monorepo relies on that: preact's compat/src imports "../../hooks", a
+// directory holding a manifest that points at src/index. Going straight to
+// index left it unresolved and the dependency on the whole package vanished.
+func TestARelativeImportOfADirectoryReadsItsManifest(t *testing.T) {
+	root := repo(t, map[string]string{
+		"package.json":        `{"name":"root"}`,
+		"hooks/package.json":  `{"name":"hooks","main":"src/index.js"}`,
+		"hooks/src/index.js":  `export const h = 1;`,
+		"compat/src/index.ts": `import "../../hooks";`,
+	})
+	r, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := r.Resolve("compat/src/index.ts", "../../hooks")
+	if got.Kind != ToFile {
+		t.Fatalf("../../hooks did not resolve to a file: %+v", got)
+	}
+	if got.Path != "hooks/src/index.js" {
+		t.Errorf("resolved to %q, want hooks/src/index.js", got.Path)
+	}
+}
+
+// The manifest wins over index when both could answer, because that is the
+// order Node uses — a directory that names an entry means it.
+func TestADirectoryManifestBeatsItsIndexFile(t *testing.T) {
+	root := repo(t, map[string]string{
+		"package.json":     `{"name":"root"}`,
+		"lib/package.json": `{"name":"lib","main":"src/entry.ts"}`,
+		"lib/src/entry.ts": `export const e = 1;`,
+		"lib/index.ts":     `export const wrong = 1;`,
+		"app.ts":           `import "./lib";`,
+	})
+	r, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := r.Resolve("app.ts", "./lib"); got.Path != "lib/src/entry.ts" {
+		t.Errorf("resolved to %q, want the manifest's entry lib/src/entry.ts", got.Path)
+	}
+}
+
+// With no manifest the index fallback must still work, or this trades one
+// gap for another.
+func TestADirectoryWithNoManifestStillFindsIndex(t *testing.T) {
+	root := repo(t, map[string]string{
+		"package.json":        `{"name":"root"}`,
+		"components/index.ts": `export const c = 1;`,
+		"app.ts":              `import "./components";`,
+	})
+	r, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := r.Resolve("app.ts", "./components"); got.Path != "components/index.ts" {
+		t.Errorf("resolved to %q, want components/index.ts", got.Path)
+	}
+}

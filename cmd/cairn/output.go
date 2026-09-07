@@ -499,6 +499,14 @@ func runVerify(root string, asJSON bool) error {
 			"extra":      len(rep.CairnExtra),
 			"explained":  len(rep.Explained),
 			"rules":      rep.RulesExercised,
+			// The disagreements themselves, not only how many there were.
+			// A score with no way to see what produced it can be read but
+			// not acted on, and the terminal view stops at eight.
+			"disagreements": map[string]any{
+				"wrong":  rep.Wrong,
+				"missed": rep.CairnMissed,
+				"extra":  rep.CairnExtra,
+			},
 		})
 	}
 

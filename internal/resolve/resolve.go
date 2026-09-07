@@ -604,7 +604,22 @@ func (r *Resolver) tryFile(abs string) (Result, bool) {
 		}
 	}
 
-	// Directory import: ./components -> ./components/index.ts
+	// Directory import.
+	//
+	// A directory can say where its own entry is. Node reads the package.json
+	// inside it and follows main/module/types before falling back to index,
+	// and a monorepo relies on that constantly: preact's compat/src imports
+	// "../../hooks", which is a directory holding a manifest that points at
+	// src/index. Going straight to index leaves that unresolved, and the
+	// dependency on the whole package disappears from the graph.
+	//
+	// The manifest is consulted first, exactly as Node does, then index.
+	if ws := readWorkspace(abs); ws != nil && ws.Entry != "" {
+		if res, ok := r.file(ws.Entry); ok {
+			res.Via = "directory-manifest"
+			return res, true
+		}
+	}
 	for _, ext := range extensionLadder {
 		if res, ok := r.file(filepath.Join(abs, "index"+ext)); ok {
 			return res, true
