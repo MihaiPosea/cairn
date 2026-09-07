@@ -22,7 +22,7 @@
     --out:#5a7799; --in:#9d7550; --in-soft:#191919;
     --crit:#d76b6b; --good:#5bbd8a; --pkg:#8f8352; --pkg-soft:#141414;
     --edge:#2a2a2a;
-    --radius:4px; --radius-sm:3px;
+    --radius:0; --radius-sm:0;
     --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
     --font-mono:ui-monospace,SFMono-Regular,Menlo,monospace;
     --font-serif:var(--font-sans);
@@ -42,7 +42,7 @@
      line up. */
   .stats b, .row span:last-child, .d, .fn, .num b, .f .fn,
   .crumb-count, .rail-item .rn { font-variant-numeric:tabular-nums; }
-  :focus-visible { outline:1px solid #3f3f3f; outline-offset:1px; border-radius:2px; }
+  :focus-visible { outline:1px solid #3f3f3f; outline-offset:1px; border-radius:0; }
   html,body { height:100%; margin:0; overflow:hidden; }
   body {
     background:var(--paper); color:var(--ink);
@@ -77,7 +77,7 @@
   #mini {
     position:absolute; right:16px; bottom:16px; width:250px; height:158px;
     border:1px solid var(--rule); background:var(--surface-2); cursor:pointer;
-    border-radius:var(--radius); color:var(--ink-2); font:12px var(--font-sans);
+    border-radius:0; color:var(--ink-2); font:12px var(--font-sans);
   }
 
   aside {
@@ -94,7 +94,7 @@
   .row span:last-child { color:var(--ink); font-weight:550; font-variant-numeric:tabular-nums; }
   h3 { font:550 11px/1 var(--font-sans); letter-spacing:0.04em; text-transform:uppercase;
        color:var(--ink-faint); margin:22px 0 8px; }
-  h3 .k { display:inline-block; width:7px; height:7px; border-radius:2px;
+  h3 .k { display:inline-block; width:7px; height:7px; border-radius:0;
           margin-right:6px; vertical-align:0px; }
   h3 .k.in { background:var(--in); } h3 .k.out { background:var(--out); }
   ul { list-style:none; margin:0; padding:0; }
@@ -110,7 +110,7 @@
   .imp code {
     display:block; font:11px/1.55 var(--font-mono); color:var(--ink-2);
     background:var(--surface-2); padding:6px 9px; margin-top:6px;
-    border-radius:var(--radius-sm); white-space:pre; overflow-x:auto;
+    border-radius:0; white-space:pre; overflow-x:auto;
     border-left:2px solid var(--rule-strong);
   }
   .imp:hover code { background:var(--surface-3); }
@@ -128,7 +128,7 @@
 
   input, button {
     font:12.5px var(--font-sans); padding:6px 11px; border:1px solid var(--rule-strong);
-    border-radius:var(--radius-sm); background:var(--surface); color:var(--ink);
+    border-radius:0; background:var(--surface); color:var(--ink);
   }
   input { width:190px; }
   input::placeholder { color:var(--ink-faint); }
@@ -181,7 +181,7 @@
   }
   .crumb {
     font:12px var(--font-mono); padding:3px 8px; border:1px solid transparent;
-    border-radius:var(--radius-sm); background:none; color:var(--ink-2);
+    border-radius:0; background:none; color:var(--ink-2);
   }
   .crumb:last-of-type { color:var(--ink); font-weight:500; }
   .crumb.back { border-color:var(--rule-strong); color:var(--ink-2);
@@ -218,7 +218,7 @@
                  letter-spacing:0.04em; text-transform:uppercase; margin-right:3px; }
   .chip {
     font:11.5px var(--font-mono); padding:4px 9px; border:1px solid var(--rule-strong);
-    border-radius:999px; background:var(--surface); color:var(--ink-soft); cursor:pointer;
+    border-radius:0; background:var(--surface); color:var(--ink-soft); cursor:pointer;
   }
   .chip:hover { border-color:var(--accent); color:var(--accent); }
   .chip.alt { border-style:dashed; }
@@ -245,7 +245,7 @@
             background:var(--surface); font:11.5px var(--font-sans);
             color:var(--ink-faint); flex-shrink:0; align-items:center; }
   .sw { display:inline-block; width:9px; height:9px; margin-right:6px;
-        border:1.2px solid var(--rule-strong); border-radius:2px; vertical-align:-1px; }
+        border:1.2px solid var(--rule-strong); border-radius:0; vertical-align:-1px; }
   .sw.entry { border-color:var(--rule-strong); box-shadow:inset 2px 0 0 var(--accent); }
   .sw.dead { border-color:var(--crit); border-style:dashed; }
   .sw.pkg { border-color:var(--pkg); background:var(--pkg-soft); }
@@ -1135,7 +1135,7 @@ function drawWells(x0, y0, x1, y1) {
     if (x.x + x.bw < x0 || x.x > x1 || x.y + x.bh < y0 || x.y > y1) continue;
     ctx.fillStyle = C.paper;
     ctx.beginPath();
-    ctx.roundRect(x.x, x.y, x.bw, x.bh, 10);
+    ctx.rect(x.x, x.y, x.bw, x.bh);
     ctx.fill();
     ctx.save();
     ctx.clip();
@@ -1189,7 +1189,7 @@ function drawBoxes(x0, y0, x1, y1) {
 
     // Rounded to the site's small radius; a 1px hairline at any zoom.
     ctx.beginPath();
-    ctx.roundRect(x.x, x.y, x.bw, x.bh, open ? 10 : 6);
+    ctx.rect(x.x, x.y, x.bw, x.bh);
     if (!open) ctx.fill();
     if (x.dead && !x.group) ctx.setLineDash([4 / s, 3 / s]);
     ctx.lineWidth = (isSel ? 2.4 : isHover ? 1.8 : open ? 1.4 : x.group ? 1.3 : 1) / s;
