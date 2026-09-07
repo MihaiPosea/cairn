@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "cairn": {
+      "command": "go",
+      "args": [
+        "run",
+        "./cmd/cairn",
+        "mcp",
+        "--dir",
+        "/path/to/the/repo/you/want/graphed"
+      ],
+      "cwd": "/path/to/your/checkout/of/cairn"
+    }
+  }
+}

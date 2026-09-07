@@ -5,8 +5,8 @@ import "sort"
 // Disagreement is what a lockfile claims versus what is on disk.
 //
 // These are not the same question and they routinely give different answers.
-// A lockfile lists everything that *could* be needed — including packages for
-// platforms you are not on — while node_modules holds what was actually
+// A lockfile lists everything that *could* be needed - including packages for
+// platforms you are not on - while node_modules holds what was actually
 // installed. Most tools pick one silently. Reporting the gap is more useful
 // than picking a side.
 type Disagreement struct {
@@ -25,7 +25,7 @@ type Disagreement struct {
 // Compare loads both sources for a repo and reports where they differ.
 //
 // Returns a nil Disagreement when there is no lockfile to compare against,
-// which is not an error — plenty of repos have none.
+// which is not an error - plenty of repos have none.
 func Compare(root string, locked *Graph) (*Disagreement, error) {
 	onDisk := newGraph("node_modules")
 	if err := walkNodeModules(root, onDisk); err != nil {

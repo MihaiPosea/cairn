@@ -42,7 +42,7 @@ func TestCRLFLineNumbers(t *testing.T) {
 	}
 	t.Logf("CRLF -> line %d", imps[0].Line)
 	if imps[0].Line != 3 {
-		t.Errorf("BUG: line = %d, want 3 — line numbers are shown to users", imps[0].Line)
+		t.Errorf("BUG: line = %d, want 3 - line numbers are shown to users", imps[0].Line)
 	}
 }
 
@@ -168,7 +168,7 @@ func TestExportDefaultStringIsNotAnImport(t *testing.T) {
 	} {
 		got := specs(t, "a.ts", src)
 		if len(got) != 0 {
-			t.Errorf("%q produced imports %v — none of these are imports", src, got)
+			t.Errorf("%q produced imports %v - none of these are imports", src, got)
 		}
 	}
 }

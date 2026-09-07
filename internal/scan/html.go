@@ -21,7 +21,7 @@ var htmlRef = regexp.MustCompile(`(?i)<(?:script|link)[^>]*?(?:src|href)\s*=\s*[
 //
 //	<script type="module" src="/src/main.tsx"></script>
 //
-// Nothing imports that file, so without reading the HTML it looks unreachable —
+// Nothing imports that file, so without reading the HTML it looks unreachable -
 // and so does everything only it reaches. Measured on Excalidraw: its app entry,
 // its example app's entry, and its service worker were all reported dead.
 func htmlEntries(root string, htmlFiles []string) []string {

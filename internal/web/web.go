@@ -89,7 +89,7 @@ type Payload struct {
 	// and scopes everything it draws to one of them at a time.
 	Modules []modules.Module `json:"modules"`
 	// ModuleOf maps a node ID to its module. Packages are included as well as
-	// files — a node missing from this map is an edge endpoint the page
+	// files - a node missing from this map is an edge endpoint the page
 	// cannot place, and it would drop the edge without saying so.
 	ModuleOf map[string]string `json:"moduleOf"`
 	// ModuleEdges are the import relationships between modules.
@@ -105,7 +105,7 @@ type Payload struct {
 	Parts map[string]modules.Module `json:"parts"`
 
 	// Report is the readable account of the repository: what it is, and what
-	// is worth knowing about it. A count is not a finding — "cycles 5" tells
+	// is worth knowing about it. A count is not a finding - "cycles 5" tells
 	// nobody anything, so each of these names the thing and what it costs.
 	Report Report `json:"report"`
 }
@@ -179,7 +179,7 @@ func Build(res *scan.Result, includePackages bool) *Payload {
 	// view of the load-bearing parts beats a complete view of nothing legible.
 	//
 	// Ranking uses direct dependents, which is one pass over the edges.
-	// Ranking by *transitive* blast radius would need a traversal per node —
+	// Ranking by *transitive* blast radius would need a traversal per node -
 	// O(nodes x edges), which on a 50,000-file repo with 75,000 edges took
 	// longer than two minutes and looked like a hang. Direct dependents is a
 	// good proxy for "load-bearing" and costs nothing.
@@ -194,7 +194,7 @@ func Build(res *scan.Result, includePackages bool) *Payload {
 		ids = ids[:maxNodes]
 	}
 
-	// Transitive blast radius costs one traversal per node — O(nodes x edges).
+	// Transitive blast radius costs one traversal per node - O(nodes x edges).
 	// That was fine when only 1,200 nodes were sent and is not now, so above a
 	// threshold the cheaper direct-dependent count stands in and the payload
 	// says so rather than quietly reporting a different number under the same
@@ -293,7 +293,7 @@ func Build(res *scan.Result, includePackages bool) *Payload {
 	// Keep only what the page can actually draw. Packages are in the graph
 	// even when they are left out of the payload, so the map would otherwise
 	// offer an "external packages" module holding 84 nodes that do not exist
-	// here — a box the reader can click into and find empty.
+	// here - a box the reader can click into and find empty.
 	drawn := make(map[string]string, len(p.Nodes))
 	used := map[string]bool{}
 	for _, n := range p.Nodes {

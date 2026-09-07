@@ -12,7 +12,7 @@ import (
 //
 // This is what makes "this import costs 1.2 MB" a real number rather than a
 // package count. It is a stat-only walk, so it is fast even over a few hundred
-// megabytes, but it is still the most expensive thing cairn does — hence it is
+// megabytes, but it is still the most expensive thing cairn does - hence it is
 // opt-in rather than part of every scan.
 //
 // Nested node_modules are attributed to the package that contains them, which
@@ -51,7 +51,7 @@ func MeasureSizes(root string, g *Graph) error {
 func assign(g *Graph, name, dir string) {
 	p, ok := g.Packages[name]
 	if !ok {
-		// Installed but not in the lockfile — worth knowing about.
+		// Installed but not in the lockfile - worth knowing about.
 		p = &Package{Name: name}
 		g.Packages[name] = p
 		g.Warnings = append(g.Warnings, name+" is installed but absent from the lockfile")

@@ -34,7 +34,7 @@ func ErrNotAGitRepo(err error) bool { return errors.Is(err, errNotAGitRepo) }
 type Result struct {
 	// Changed is the files git reported, repo-relative.
 	Changed []string
-	// Unknown are changed paths cairn has no node for — a new file, a deleted
+	// Unknown are changed paths cairn has no node for - a new file, a deleted
 	// one, or a file type it does not parse.
 	Unknown []string
 	// Affected is every file transitively depending on something changed,
@@ -154,9 +154,9 @@ func Compute(res *scan.Result, changed []string) *Result {
 	// Anything that makes the graph incomplete makes the answer unsound.
 	switch {
 	case len(res.Unanalyzable) > 0:
-		out.Bail = "this repo has import() calls with computed paths, which cairn cannot follow — the affected set could be missing files"
+		out.Bail = "this repo has import() calls with computed paths, which cairn cannot follow - the affected set could be missing files"
 	case len(res.Unresolved) > 0:
-		out.Bail = "this repo has unresolved imports — the graph is incomplete, so the affected set could be missing files"
+		out.Bail = "this repo has unresolved imports - the graph is incomplete, so the affected set could be missing files"
 	}
 
 	affected := map[string]bool{}
@@ -168,7 +168,7 @@ func Compute(res *scan.Result, changed []string) *Result {
 			// Config files are the common case and the dangerous one: change
 			// a tsconfig or a build config and every assumption here is void.
 			if out.Bail == "" {
-				out.Bail = "changed files are not in the graph (" + f + ") — a config or a new file can affect anything"
+				out.Bail = "changed files are not in the graph (" + f + ") - a config or a new file can affect anything"
 			}
 			continue
 		}

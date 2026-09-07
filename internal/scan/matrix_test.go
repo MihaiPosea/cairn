@@ -220,7 +220,7 @@ import { u } from "../lib/utils";
 				t.Logf("    UNRESOLVED %s", d)
 			}
 			if s.wantFiles > 0 && res.FilesScanned < s.wantFiles {
-				t.Errorf("scanned %d files, expected at least %d — a whole file type is being skipped",
+				t.Errorf("scanned %d files, expected at least %d - a whole file type is being skipped",
 					res.FilesScanned, s.wantFiles)
 			}
 			if len(res.Unresolved) > 0 {

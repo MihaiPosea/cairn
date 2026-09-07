@@ -58,7 +58,7 @@ func loadNPMLock(root, path string) (*Graph, error) {
 
 // loadBunLock reads bun.lock.
 //
-// It is JSONC — trailing commas and all — so it reuses the same scanner the
+// It is JSONC - trailing commas and all - so it reuses the same scanner the
 // tsconfig loader needs. Each package entry is an array whose shape is
 // positional and undocumented:
 //

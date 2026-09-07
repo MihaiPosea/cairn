@@ -9,8 +9,8 @@
 // files got 1,159 lines crossing the screen, which is the picture that makes
 // people decide these tools are useless.
 //
-// A module map is the fix at the top: every repository measured — nine of
-// them, from a 243-file starter to nx at 5,731 — collapses to between four and
+// A module map is the fix at the top: every repository measured - nine of
+// them, from a 243-file starter to nx at 5,731 - collapses to between four and
 // fourteen boxes with at most twenty-five edges between them. That is a
 // picture read in seconds, and the thing you click into.
 package modules
@@ -70,12 +70,12 @@ type Edge struct {
 type Map struct {
 	Modules []Module `json:"modules"`
 	// Parts describes every workspace package in the repository, keyed by the
-	// viewer's group id — not only the dozen chosen as top-level modules.
+	// viewer's group id - not only the dozen chosen as top-level modules.
 	//
 	// The opening view is usually one or two levels in, so the boxes on screen
 	// are rarely the modules themselves. Without this, everything a package
-	// declares about itself — its name, its purpose, the entry point it wants
-	// you to use — was known and then not shown, because the box the reader
+	// declares about itself - its name, its purpose, the entry point it wants
+	// you to use - was known and then not shown, because the box the reader
 	// clicked was not in the module list.
 	Parts map[string]Module `json:"parts"`
 	// Of maps a node ID to its module ID. Packages are included, not only
@@ -88,7 +88,7 @@ type Map struct {
 
 // maxModules is the ceiling on how many boxes the top level may show.
 //
-// Not a rendering limit — the layout would draw forty happily. It is a reading
+// Not a rendering limit - the layout would draw forty happily. It is a reading
 // limit: past a dozen the picture stops being something you take in at once,
 // which is the only thing this level is for.
 const maxModules = 12
@@ -260,7 +260,7 @@ func fileNodes(g *graph.Graph) []*graph.Node {
 // Everything starts at one segment. The largest module holding at least
 // splitShare of the repository is replaced by its children, repeatedly, while
 // that keeps the total within the cap. This is what makes a monorepo show its
-// real top-level shape — packages/, e2e/, docs/ — rather than either one box
+// real top-level shape - packages/, e2e/, docs/ - rather than either one box
 // labelled "packages/" or fifty-seven workspace packages.
 func splitDepths(files []*graph.Node) map[string]int {
 	total := len(files)

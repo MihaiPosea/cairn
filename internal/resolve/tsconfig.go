@@ -24,7 +24,7 @@ type TSConfig struct {
 // TypeScript resolves `paths` against `baseUrl` when one is declared, and
 // against *the config file that declares the paths* when one is not. With a
 // child extending a parent and neither declaring baseUrl, a single shared
-// baseURL sends the child's aliases to the parent's directory — which is how a
+// baseURL sends the child's aliases to the parent's directory - which is how a
 // monorepo's per-package aliases silently stop resolving.
 type AliasRule struct {
 	Pattern string

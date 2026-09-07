@@ -1,10 +1,13 @@
 package mcp
 
 import (
+	"bufio"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/MihaiPosea/cairn/internal/modules"
@@ -200,4 +203,135 @@ func TestOverviewNamesTheModules(t *testing.T) {
 		strings.Contains(out, "\n  →") {
 		t.Errorf("a module edge is missing one side:\n%s", out)
 	}
+}
+
+// A json.Decoder over the stream cannot survive a syntax error: its buffer
+// still holds the bad bytes, so every later Decode fails on the same ones and
+// the loop never reaches the next request. Measured before the fix: one
+// malformed frame and the server never answered again, at 0% CPU, silently -
+// any client writing a stray byte to the pipe took the whole session with it.
+func TestAMalformedFrameDoesNotWedgeTheStream(t *testing.T) {
+	s := fixture(t)
+	in := strings.NewReader(strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize"}`,
+		`{not json at all`,
+		``,
+		`[1,2,3]`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
+	}, "\n") + "\n")
+	var out strings.Builder
+	s.in = bufio.NewReader(in)
+	s.out = &out
+	s.log = io.Discard
+
+	if err := s.Serve(); err != nil {
+		t.Fatalf("Serve returned %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected replies to the two well-formed requests, got %d:\n%s",
+			len(lines), out.String())
+	}
+	var last struct {
+		ID     int            `json:"id"`
+		Result map[string]any `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(lines[1]), &last); err != nil {
+		t.Fatalf("the reply after the bad frames is not valid JSON: %v", err)
+	}
+	if last.ID != 2 {
+		t.Errorf("ids desynchronised: the second reply is id %d, want 2", last.ID)
+	}
+	if last.Result["tools"] == nil {
+		t.Error("the request after the malformed frames was not answered")
+	}
+}
+
+// rescan swaps the graph under a write lock while queries read it. That lock
+// was written and never exercised: a rescan landing between a reader taking
+// the pointer and using it would tear the answer, and the race detector is
+// the only thing that reliably shows it.
+func TestQueriesAndRescanDoNotRace(t *testing.T) {
+	s := fixture(t)
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+	errs := make(chan error, 64)
+
+	for range 6 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				for _, c := range []struct {
+					tool string
+					args map[string]string
+				}{
+					{"ladder", map[string]string{"file": "src/util.ts"}},
+					{"blast", map[string]string{"file": "src/core.ts"}},
+					{"overview", map[string]string{}},
+					{"scope", map[string]string{"file": "src/index.ts"}},
+				} {
+					raw, _ := json.Marshal(c.args)
+					if _, err := s.call(c.tool, raw); err != nil {
+						errs <- err
+					}
+				}
+			}
+		}()
+	}
+
+	for range 8 {
+		if err := s.rescan(); err != nil {
+			t.Fatalf("rescan: %v", err)
+		}
+	}
+	close(stop)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("a query failed while the graph was being replaced: %v", err)
+	}
+}
+
+// The graph a single reply is built from must be one consistent scan. Taking
+// res and mods under separate locks would let a rescan land between them and
+// answer half from each.
+func TestOneReplyUsesOneConsistentGraph(t *testing.T) {
+	s := fixture(t)
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_ = s.rescan()
+			}
+		}
+	}()
+
+	for range 200 {
+		out, err := s.call("overview", nil)
+		if err != nil {
+			t.Fatalf("overview failed mid-rescan: %v", err)
+		}
+		// The module list and the file count come from the same pair; if they
+		// were taken from different scans the reply would name modules the
+		// count cannot account for.
+		if !strings.Contains(out, "modules") || !strings.Contains(out, "files") {
+			t.Fatalf("torn reply: %q", out)
+		}
+	}
+	close(stop)
+	wg.Wait()
 }

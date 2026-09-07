@@ -18,13 +18,13 @@ import (
 // edges point backwards and the layout stops reading left to right.
 //
 // Longest path is correct but its raw numbers are not usable as labels. On
-// excalidraw it reaches 648 — not because anything is 648 imports deep, but
+// excalidraw it reaches 648 - not because anything is 648 imports deep, but
 // because that is the longest chain that can be strung together across the
 // repo, and most files pile up near the end of it. A column headed "630" tells
 // a reader nothing. So the final step replaces each depth by its rank among the
 // depths that actually occur, collapsing the empty levels between them. Rank is
-// monotonic in depth, so every edge still points forward — the property the
-// longest path was chosen for survives — and the labels become 0, 1, 2, 3.
+// monotonic in depth, so every edge still points forward - the property the
+// longest path was chosen for survives - and the labels become 0, 1, 2, 3.
 func layers(g *graph.Graph, ids []string) map[string]int {
 	inSet := make(map[string]bool, len(ids))
 	for _, id := range ids {
@@ -58,7 +58,7 @@ func layers(g *graph.Graph, ids []string) map[string]int {
 	}
 
 	// Cyclic graph: relax repeatedly, bounded so a cycle cannot spin forever.
-	// The bound is why this is safe — inside a cycle there is no correct depth,
+	// The bound is why this is safe - inside a cycle there is no correct depth,
 	// only a consistent one.
 	const maxPasses = 64
 	for pass := 0; pass < maxPasses; pass++ {

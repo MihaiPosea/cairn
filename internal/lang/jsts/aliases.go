@@ -15,7 +15,7 @@ import (
 //	resolve: { alias: { "@": path.resolve(__dirname, "./src") } }
 //
 // Many projects mirror them into tsconfig for the editor's benefit, which is
-// why this went unnoticed — but plenty do not, and in those repos every
+// why this went unnoticed - but plenty do not, and in those repos every
 // aliased import is unresolved.
 //
 // The config is read from its syntax tree, not matched with a regex: these
@@ -135,7 +135,7 @@ func valueOf(pair *ts.Node, l *ts.Language) *ts.Node {
 // lastStringLiteral returns the final string in an expression subtree.
 //
 // For path.resolve(__dirname, "./src") that is "./src", and for
-// fileURLToPath(new URL("./src", import.meta.url)) it is also "./src" —
+// fileURLToPath(new URL("./src", import.meta.url)) it is also "./src" -
 // import.meta.url contributes no string literal. Taking the last one rather
 // than the first is what makes both work.
 func lastStringLiteral(n *ts.Node, l *ts.Language, src []byte) string {

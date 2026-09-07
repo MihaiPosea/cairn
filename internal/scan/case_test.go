@@ -33,6 +33,6 @@ func TestCaseMismatchCreatesDuplicateNodes(t *testing.T) {
 	t.Logf("file nodes: %v", fileNodes)
 	t.Logf("unresolved: %d", len(res.Unresolved))
 	if len(fileNodes) > 2 {
-		t.Errorf("BUG: %d file nodes for 2 files — a case-mismatched import made a duplicate", len(fileNodes))
+		t.Errorf("BUG: %d file nodes for 2 files - a case-mismatched import made a duplicate", len(fileNodes))
 	}
 }

@@ -27,15 +27,43 @@ type Workspace struct {
 // three-package fixture: three nodes, zero edges. That is worse than an error,
 // because it looks like a working answer.
 //
-// Both conventions are read — npm/yarn/bun put a "workspaces" array in
-// package.json, pnpm uses pnpm-workspace.yaml — because a repo may have either.
+// Both conventions are read - npm/yarn/bun put a "workspaces" array in
+// package.json, pnpm uses pnpm-workspace.yaml - because a repo may have either.
 func findWorkspaces(root string) map[string]*Workspace {
-	patterns := append(npmWorkspacePatterns(root), pnpmWorkspacePatterns(root)...)
-	if len(patterns) == 0 {
-		return nil
+	out := map[string]*Workspace{}
+
+	// A package may import itself by its own name. Node allows it whenever the
+	// manifest has an "exports" field, and libraries with subpath exports use
+	// it constantly: preact's own sources say `import "preact/compat"` rather
+	// than reaching across the tree with `../../compat/src`.
+	//
+	// Without this the specifier looks like any other bare name and resolves to
+	// an external package, so the edge leaves the repository and the file it
+	// actually points at appears to have one fewer dependent. Measured against
+	// the TypeScript compiler on preact: 88% of all disagreements, and the
+	// repository scored 49% until it was handled.
+	if self := readWorkspace(root); self != nil && self.Name != "" {
+		if raw, err := os.ReadFile(filepath.Join(root, "package.json")); err == nil {
+			var pkg struct {
+				Exports json.RawMessage `json:"exports"`
+			}
+			// Only with an exports field: that is the condition Node puts on
+			// self-reference, and honouring it keeps the behaviour the same as
+			// the runtime's.
+			if json.Unmarshal(raw, &pkg) == nil && len(pkg.Exports) > 0 {
+				out[self.Name] = self
+			}
+		}
 	}
 
-	out := map[string]*Workspace{}
+	patterns := append(npmWorkspacePatterns(root), pnpmWorkspacePatterns(root)...)
+	if len(patterns) == 0 {
+		if len(out) == 0 {
+			return nil
+		}
+		return out
+	}
+
 	for _, pattern := range patterns {
 		if strings.HasPrefix(pattern, "!") {
 			continue // negations are rare; ignoring one costs an extra package, not correctness
@@ -142,16 +170,16 @@ func readWorkspace(dir string) *Workspace {
 // Two things make this delicate, and getting either wrong is silent.
 //
 // The map has two shapes at different depths. The outer one is keyed by
-// subpath — ".", "./styles", "./package.json" — and only "." is the package's
-// main entry. The inner ones are keyed by condition — "import", "require",
+// subpath - ".", "./styles", "./package.json" - and only "." is the package's
+// main entry. The inner ones are keyed by condition - "import", "require",
 // "types". Treating a subpath map as a condition map is how a package ends up
 // resolving to its own package.json, since almost every modern manifest
 // publishes "./package.json": "./package.json" and it is just another key.
 //
 // And the fallback must not iterate a Go map. Map order is randomised per run,
 // so a manifest whose keys miss the preferred list resolves differently on
-// different runs of the same scan. Measured on tanstack-query: 319 edges — a
-// twelfth of the graph — flipped between two runs of an unchanged repository,
+// different runs of the same scan. Measured on tanstack-query: 319 edges - a
+// twelfth of the graph - flipped between two runs of an unchanged repository,
 // every one of them a workspace import landing on package.json half the time
 // and on src/index.ts the other half.
 func exportsSource(raw json.RawMessage) string {

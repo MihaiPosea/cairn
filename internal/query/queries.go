@@ -16,7 +16,7 @@ type Blast struct {
 	// Affected is every file that depends on Target, transitively, with the
 	// number of hops away it sits.
 	Affected map[string]int
-	// Direct is the set one hop away — the files that import Target itself.
+	// Direct is the set one hop away - the files that import Target itself.
 	Direct []string
 }
 
@@ -63,8 +63,8 @@ func EntryPoints(g *graph.Graph) []EntryPoint {
 	return EntryPointsWith(g, nil)
 }
 
-// EntryPointsWith adds paths declared by the repo's own package.json —
-// main, module, exports, bin — to the ones recognised by convention.
+// EntryPointsWith adds paths declared by the repo's own package.json -
+// main, module, exports, bin - to the ones recognised by convention.
 //
 // Without them a library has no entry points at all, and every file in it is
 // unreachable. See DeadReport.Bail.
@@ -158,7 +158,7 @@ func DeadFiles(g *graph.Graph, hasUnanalyzableImports bool) []Dead {
 //
 // It refuses to answer when no entry point exists at all. Reachability from an
 // empty root set marks every file dead, and "delete your entire codebase" is
-// never a useful answer — it is the failure mode that would make this tool
+// never a useful answer - it is the failure mode that would make this tool
 // dangerous rather than merely wrong.
 func DeadFilesWith(g *graph.Graph, manifest []string, hasUnanalyzableImports bool) *DeadReport {
 	entries := EntryPointsWith(g, manifest)
@@ -170,7 +170,7 @@ func DeadFilesWith(g *graph.Graph, manifest []string, hasUnanalyzableImports boo
 		}
 	}
 	if len(entries) == 0 && files > 0 {
-		return &DeadReport{Bail: "no entry points found — nothing here matches a framework convention " +
+		return &DeadReport{Bail: "no entry points found - nothing here matches a framework convention " +
 			"and package.json declares no main, module, exports or bin, so every file would be " +
 			"reported dead. Add an entry point or ignore this result."}
 	}

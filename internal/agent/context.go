@@ -6,7 +6,7 @@
 // not break something", and it asks under a hard context budget. Today it
 // answers that by grepping: a name, then the names that turned up, outward
 // until the budget is gone. That is expensive and, worse, it is wrong in a
-// specific way — grep cannot tell which file `./utils` means, so the agent
+// specific way - grep cannot tell which file `./utils` means, so the agent
 // reads the wrong utils and is confidently incorrect.
 //
 // The division of labour this package assumes:
@@ -43,18 +43,18 @@ const (
 	WhyTarget Why = "the file you are changing"
 	// WhyImports is something the target imports: you cannot change a caller
 	// without knowing what it calls.
-	WhyImports Why = "imported by the target — its behaviour is used here"
+	WhyImports Why = "imported by the target - its behaviour is used here"
 	// WhyImportedBy is something that imports the target: these break.
-	WhyImportedBy Why = "imports the target — a change here can break it"
+	WhyImportedBy Why = "imports the target - a change here can break it"
 	// WhyTypes is a type-only dependency. Cheap to read and it carries the
 	// contract, so it is worth including early even on a tight budget.
 	WhyTypes Why = "declares types the target uses"
 	// WhyTest is a test that covers the target. Tests state the contract in
 	// executable form, which is usually the fastest way to learn it.
 	WhyTest Why = "tests the target"
-	// WhyEntry is the public entry point of the target's module — the
+	// WhyEntry is the public entry point of the target's module - the
 	// boundary the change has to keep honouring.
-	WhyEntry Why = "the module's entry point — its public surface"
+	WhyEntry Why = "the module's entry point - its public surface"
 	// WhySibling is another file in the same module, included only when the
 	// budget allows, for local convention.
 	WhySibling Why = "sits in the same module"
@@ -91,7 +91,7 @@ type Context struct {
 	// Blast is how many files depend on the target, transitively. The number
 	// an agent should see before deciding how careful to be.
 	Blast int `json:"blast"`
-	// Scope is every file that could possibly be affected — the set to
+	// Scope is every file that could possibly be affected - the set to
 	// constrain a search to instead of searching the repository. Much larger
 	// than Read and much smaller than the repository.
 	Scope []string `json:"scope"`
@@ -147,7 +147,7 @@ func Build(res *scan.Result, mm *modules.Map, target string, opt Options) (*Cont
 	}
 
 	// The search scope is the union: anything that could be involved either
-	// way. This is what makes grep cheap — it is the set a search can be
+	// way. This is what makes grep cheap - it is the set a search can be
 	// restricted to without losing a hit that matters.
 	scope := map[string]bool{}
 	for k := range up {
@@ -205,7 +205,7 @@ func Build(res *scan.Result, mm *modules.Map, target string, opt Options) (*Cont
 
 	if len(res.Unanalyzable) > 0 {
 		c.Warning = "this repository has import() calls with computed specifiers, " +
-			"which no static tool can follow — the set may be missing edges those create"
+			"which no static tool can follow - the set may be missing edges those create"
 	}
 	return c, nil
 }
@@ -324,6 +324,6 @@ func cost(root, rel string) (int64, int) {
 type NotFound struct{ Path string }
 
 func (e *NotFound) Error() string {
-	return e.Path + " is not a file in this repository's graph — check the path is " +
+	return e.Path + " is not a file in this repository's graph - check the path is " +
 		"repo-relative, and that it is a source file cairn scans"
 }

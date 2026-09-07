@@ -8,8 +8,8 @@ import (
 // FuzzParse throws arbitrary bytes at the parser.
 //
 // The contract is narrow but absolute: never panic, and never return a
-// specifier containing a NUL or a newline. A scan walks whatever is on disk —
-// generated files, truncated downloads, binaries someone named .ts — and one
+// specifier containing a NUL or a newline. A scan walks whatever is on disk -
+// generated files, truncated downloads, binaries someone named .ts - and one
 // panic takes down the whole run.
 func FuzzParse(f *testing.F) {
 	seeds := []string{

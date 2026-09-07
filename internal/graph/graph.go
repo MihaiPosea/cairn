@@ -22,7 +22,7 @@ const (
 	File Kind = iota
 	// Package is an installed dependency, identified by name and version.
 	Package
-	// Builtin is a runtime builtin such as "node:fs" — real, but not a file
+	// Builtin is a runtime builtin such as "node:fs" - real, but not a file
 	// and not a package.
 	Builtin
 	// Virtual is a module a framework or bundler synthesises: astro:content,
@@ -57,7 +57,7 @@ func (k Kind) String() string {
 
 // Node is one thing in the graph.
 //
-// ID is the stable identity used everywhere — the index, the CLI, the UI —
+// ID is the stable identity used everywhere - the index, the CLI, the UI -
 // and is always "<kind>:<path-or-name>", e.g.
 //
 //	file:app/page.tsx
@@ -127,7 +127,7 @@ type Edge struct {
 // Graph is a directed graph of Nodes and Edges.
 //
 // Order records insertion order. Everything that could otherwise be arbitrary
-// — traversal order, tie-breaking, output ordering — is resolved against it, so
+// - traversal order, tie-breaking, output ordering - is resolved against it, so
 // two scans of an unchanged repo produce byte-identical output. Without that,
 // nothing here is testable.
 type Graph struct {
@@ -146,7 +146,7 @@ func New() *Graph {
 }
 
 // AddNode inserts n if its ID is not already present, and returns the node that
-// ends up in the graph. Re-adding an existing ID is a no-op, not an error —
+// ends up in the graph. Re-adding an existing ID is a no-op, not an error -
 // the same file is reached from many places.
 func (g *Graph) AddNode(n *Node) *Node {
 	if existing, ok := g.Nodes[n.ID]; ok {
@@ -171,10 +171,10 @@ func (g *Graph) AddEdge(e Edge) error {
 	return nil
 }
 
-// Dependencies returns the edges leaving id — what id depends on.
+// Dependencies returns the edges leaving id - what id depends on.
 func (g *Graph) Dependencies(id string) []Edge { return g.out[id] }
 
-// Dependents returns the edges arriving at id — what depends on id.
+// Dependents returns the edges arriving at id - what depends on id.
 // This is the direction blast radius walks.
 func (g *Graph) Dependents(id string) []Edge { return g.in[id] }
 
@@ -237,8 +237,8 @@ func (g *Graph) SortedIDs() []string {
 // in a cycle" falls out of it for free.
 //
 // Note that treating a cycle as an error is right for a build graph, where a
-// cycle means nothing can start. It is wrong for an import graph — JavaScript
-// permits circular imports and real repos are full of them — which is why
+// cycle means nothing can start. It is wrong for an import graph - JavaScript
+// permits circular imports and real repos are full of them - which is why
 // query.Cycles reports them as findings instead. Both exist on purpose.
 func (g *Graph) TopoOrder() ([]*Node, error) {
 	// Distinct targets, not edge count. A file that imports the same module on
@@ -302,7 +302,7 @@ func (g *Graph) TopoOrder() ([]*Node, error) {
 // a depth-first walk restricted to stuck nodes, carrying the path it took,
 // finds one: reaching a node already on the current path closes the loop.
 //
-// Iterative rather than recursive — a deep chain would overflow the stack, and
+// Iterative rather than recursive - a deep chain would overflow the stack, and
 // this runs on repos with tens of thousands of files.
 func findCycle(g *Graph, stuck map[string]int) []string {
 	inStuck := func(id string) bool { _, ok := stuck[id]; return ok }

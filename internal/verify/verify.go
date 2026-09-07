@@ -2,7 +2,7 @@
 //
 // It runs TypeScript's own module resolver over the same repo and diffs the
 // answers. This is the difference between a tool that produces a plausible
-// picture and one that produces a checked one — and the resulting precision
+// picture and one that produces a checked one - and the resulting precision
 // and recall numbers are the only honest claim cairn can make about itself.
 //
 // The oracle is the real compiler, deliberately. A second implementation
@@ -49,7 +49,7 @@ type Report struct {
 	Compared int
 	Agreed   int
 
-	// CairnMissed are specifiers TypeScript found that cairn did not — a hole
+	// CairnMissed are specifiers TypeScript found that cairn did not - a hole
 	// in the parser.
 	CairnMissed []Disagreement
 	// CairnExtra are specifiers cairn found that TypeScript did not. Usually
@@ -67,7 +67,7 @@ type Report struct {
 	//
 	// Without this a perfect score is unfalsifiable. A repo whose imports are
 	// all relative never touches path aliases, so 100% on it proves nothing
-	// about aliases — and that is not a hypothetical: measured on travel-site,
+	// about aliases - and that is not a hypothetical: measured on travel-site,
 	// which has a tsconfig alias configured and zero imports that use it.
 	RulesExercised map[string]int
 }

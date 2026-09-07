@@ -48,7 +48,7 @@ func TestBlastRadiusIsTransitiveAndIncludesTypeOnly(t *testing.T) {
 	// Changing a type breaks the compile of whoever imports it.
 	bt := BlastRadius(g, fid("lib/types.ts"))
 	if _, ok := bt.Affected[fid("components/Button.tsx")]; !ok {
-		t.Error("a type-only importer must appear in the blast radius — changing a type breaks its compile")
+		t.Error("a type-only importer must appear in the blast radius - changing a type breaks its compile")
 	}
 }
 

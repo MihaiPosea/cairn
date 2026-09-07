@@ -2,7 +2,7 @@
 """Fifty repositories, cloned fresh, four questions each.
 
 For every repo: does cairn scan it at all, does the MCP server answer quickly
-and briefly, and — the real test — how much of the true answer does a careful
+and briefly, and - the real test - how much of the true answer does a careful
 grep route find, and what does it cost to find it.
 
 Ground truth is cairn's own graph. That is only legitimate because `cairn

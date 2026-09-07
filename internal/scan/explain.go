@@ -29,7 +29,7 @@ var buildDirs = map[string]bool{
 //
 // This is the difference between a tool someone trusts and one they close.
 // Measured on shadcn/ui: 4,623 unresolved imports, of which 4,611 share the
-// prefix "@/styles/base-nova" — files that repo generates during its build and
+// prefix "@/styles/base-nova" - files that repo generates during its build and
 // which genuinely do not exist in a fresh clone. One line saying so is useful;
 // 4,623 lines saying "not found" looks like the tool is broken.
 func ClusterUnresolved(items []Unresolvable) []Cluster {
@@ -60,7 +60,7 @@ func ClusterUnresolved(items []Unresolvable) []Cluster {
 // Leading "./" and "../" are stripped before grouping, because they say where
 // the importing file sits rather than what is being imported. Without that,
 // "../../dist/core/x" groups under "../../" alongside every other deep
-// relative import, hiding the shared cause — measured on Astro, where 757
+// relative import, hiding the shared cause - measured on Astro, where 757
 // imports collapsed into one meaningless group that was really 303 pointing at
 // dist/core, 91 at dist/assets, and so on.
 func groupKey(spec string) string {
@@ -126,13 +126,13 @@ var generatedDirs = map[string]bool{
 func categorise(prefix string, group []Unresolvable) string {
 	// The importing file's location says more than the specifier does.
 	if allMatch(group, isTestFixture) {
-		return "test fixtures — these imports are meant to fail"
+		return "test fixtures - these imports are meant to fail"
 	}
 	if allMatch(group, isTemplate) {
-		return "scaffolding templates — the files appear when the template is used"
+		return "scaffolding templates - the files appear when the template is used"
 	}
 	if allMatch(group, isPlayground) {
-		return "playground and example apps — demos, not the library itself"
+		return "playground and example apps - demos, not the library itself"
 	}
 
 	// Inspect the group's actual specifiers, not just the shared prefix.
@@ -152,17 +152,17 @@ func categorise(prefix string, group []Unresolvable) string {
 			}
 		}
 		if codegen {
-			return "codegen output — written by a framework or generator, not committed"
+			return "codegen output - written by a framework or generator, not committed"
 		}
 		if templates {
-			return "scaffolding templates — the files appear when the template is used"
+			return "scaffolding templates - the files appear when the template is used"
 		}
 	}
 
 	segments := strings.Split(strings.TrimPrefix(prefix, "./"), "/")
 	for _, seg := range segments {
 		if generatedDirs[seg] {
-			return "codegen output — written by a framework or generator, not committed"
+			return "codegen output - written by a framework or generator, not committed"
 		}
 	}
 	if strings.HasSuffix(prefix, ".node") || strings.HasSuffix(prefix, ".wasm") {
@@ -170,15 +170,15 @@ func categorise(prefix string, group []Unresolvable) string {
 	}
 	for _, seg := range segments {
 		if buildDirs[seg] {
-			return "build output with no source equivalent — run the repo's build"
+			return "build output with no source equivalent - run the repo's build"
 		}
 	}
 	// A whole directory tree that is systematically absent.
 	//
 	// Individual mistakes do not cluster: nobody typos the same directory
 	// 4,611 times. When that many imports share a path prefix and none of them
-	// resolve, the tree is produced by something — a registry, a codegen step,
-	// a fetch — rather than missing by accident. shadcn/ui is the case that
+	// resolve, the tree is produced by something - a registry, a codegen step,
+	// a fetch - rather than missing by accident. shadcn/ui is the case that
 	// forced this: apps/v4/styles/ contains a README and nothing else, and its
 	// contents arrive during a build.
 	//
@@ -186,7 +186,7 @@ func categorise(prefix string, group []Unresolvable) string {
 	// set it here and a genuine mistake still stands out as itself.
 	const systematic = 10
 	if len(group) >= systematic && strings.Contains(prefix, "/") {
-		return "an entire directory tree is absent — produced by a build or generator"
+		return "an entire directory tree is absent - produced by a build or generator"
 	}
 
 	if strings.HasPrefix(prefix, ".") {
@@ -258,7 +258,7 @@ func specifierIsTemplate(spec string) bool {
 // templateDirs hold code that is copied into a new project rather than run in
 // place, so its imports refer to files that appear only after scaffolding.
 //
-// The names vary by project — t3 uses "template", Qwik uses "starters" — and
+// The names vary by project - t3 uses "template", Qwik uses "starters" - and
 // missing one turns an entire directory of intentional dangling imports into
 // what looks like a broken repository.
 var templateDirs = []string{
@@ -298,7 +298,7 @@ func isTemplate(path string) bool {
 //
 // Aggregating by category rather than by largest group is what makes the
 // sentence true: Astro's unresolved imports spread across ninety-odd path
-// prefixes, but 88% of them are the same cause — a fresh clone that has not
+// prefixes, but 88% of them are the same cause - a fresh clone that has not
 // been built. The largest single group is only 28%, so reporting that would
 // understate it.
 func (r *Result) UnresolvedSummary() string {

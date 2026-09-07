@@ -95,7 +95,7 @@ func TestModuleIDsAreTheViewersGroupIDs(t *testing.T) {
 }
 
 // Every edge endpoint must be a module that exists, or the viewer draws a line
-// to nowhere — the same invariant internal/web already asserts for file edges.
+// to nowhere - the same invariant internal/web already asserts for file edges.
 func TestModuleEdgeEndpointsExist(t *testing.T) {
 	res := build(t, map[string]string{
 		"app/page.tsx": `import "../lib/utils"; import "../components/Button";`,

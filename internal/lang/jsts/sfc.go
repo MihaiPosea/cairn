@@ -6,7 +6,7 @@ import (
 
 // Single-file components put JavaScript inside a markup document: Vue and
 // Svelte in <script> blocks, Astro in a --- fenced frontmatter. Without
-// handling them, an entire ecosystem is invisible — not merely incomplete.
+// handling them, an entire ecosystem is invisible - not merely incomplete.
 // A Vue app scanned without .vue support shows a handful of .ts utility files
 // and no components at all, which looks like a working scan of a tiny project.
 //
@@ -37,7 +37,7 @@ func extractBlocks(ext, src string) []scriptBlock {
 
 // scriptTagBlocks finds every <script ...> ... </script> region.
 //
-// A Vue file often has two — `<script>` and `<script setup>` — and both may
+// A Vue file often has two - `<script>` and `<script setup>` - and both may
 // contain imports, so all of them are returned rather than just the first.
 func scriptTagBlocks(src string) []scriptBlock {
 	var out []scriptBlock

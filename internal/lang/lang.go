@@ -1,7 +1,7 @@
 // Package lang defines how cairn extracts import statements from source code.
 //
 // A Parser turns bytes into raw import specifiers and nothing more. It does not
-// resolve them — it has no idea whether "./utils" means utils.ts, utils/index.ts
+// resolve them - it has no idea whether "./utils" means utils.ts, utils/index.ts
 // or nothing at all. That is internal/resolve's job, and keeping the two apart
 // is what makes adding a language a small change instead of a rewrite.
 package lang
@@ -27,7 +27,7 @@ const (
 	Reexport
 	// TypeOnlyReexport is `export type { X } from "y"`.
 	TypeOnlyReexport
-	// Unanalyzable is `import(someVariable)` or `require(buildPath())` — a real
+	// Unanalyzable is `import(someVariable)` or `require(buildPath())` - a real
 	// dependency on something we cannot name.
 	//
 	// These are recorded rather than dropped. A file that is only ever loaded

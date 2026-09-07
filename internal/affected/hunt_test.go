@@ -37,7 +37,7 @@ func TestDeletedFileBails(t *testing.T) {
 	got := Compute(res, []string{"lib/deleted.ts"})
 	t.Logf("deleted -> bail=%q unknown=%v", got.Bail, got.Unknown)
 	if got.Bail == "" {
-		t.Error("BUG: a deleted file must bail — whatever imported it is now broken and unfindable")
+		t.Error("BUG: a deleted file must bail - whatever imported it is now broken and unfindable")
 	}
 }
 

@@ -17,8 +17,8 @@ import (
 //	  "#config":     { "node": "./config.node.js", "default": "./config.js" }
 //	}
 //
-// These are genuinely resolvable, so classifying them as "virtual" — which is
-// where they landed at first, alongside astro: and virtual: — was giving up on
+// These are genuinely resolvable, so classifying them as "virtual" - which is
+// where they landed at first, alongside astro: and virtual: - was giving up on
 // information that is right there in the manifest. A '#' specifier only stays
 // virtual when no manifest explains it.
 //

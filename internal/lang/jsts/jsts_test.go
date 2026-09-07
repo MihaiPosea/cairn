@@ -67,7 +67,7 @@ import Real from "real";
 	}
 }
 
-// A dynamic import we cannot resolve must be recorded, never dropped —
+// A dynamic import we cannot resolve must be recorded, never dropped -
 // otherwise a file loaded only through a computed path looks dead.
 func TestUnanalyzableDynamicImportIsRecorded(t *testing.T) {
 	got := parse(t, "a.ts", "const m = await import(routeFor(slug));\n")

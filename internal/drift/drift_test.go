@@ -62,7 +62,7 @@ func TestANewCycleIsARegression(t *testing.T) {
 }
 
 // The dishonest case. When one import merges several loops into a bigger one,
-// the small loops vanish — and calling each of those an improvement turns a
+// the small loops vanish - and calling each of those an improvement turns a
 // clear regression into a wash. Measured on vue: three cycles of 14, 13 and 62
 // files became a single cycle of 104, which naively reads as one regression
 // and three improvements.
