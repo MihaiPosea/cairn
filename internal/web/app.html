@@ -147,26 +147,27 @@
   #bar { position:fixed; top:0; right:0; height:var(--head); display:flex; align-items:center;
          gap:8px; padding:0 14px 0 0; z-index:41; }
   #bar input { width:150px; }
-  .brand { position:fixed; top:0; left:0; height:var(--head); z-index:42;
-           display:flex; align-items:center; padding:0 14px 0 16px;
-           font:620 14px/1 var(--font-sans); letter-spacing:-0.01em; color:var(--ink); }
-  #chips { padding-left:calc(var(--rail) + 12px); padding-right:290px; }
+  .brand { flex:none; margin-right:16px; font:620 14px/1 var(--font-sans);
+           letter-spacing:-0.01em; color:var(--ink); }
+  #chips { padding-left:calc(var(--rail) + 15px); padding-right:290px;
+           min-height:var(--head); }
 
   #views {
     position:fixed; left:0; top:var(--head); bottom:0; width:var(--rail);
     display:flex; flex-direction:column; align-items:stretch; gap:1px;
-    padding-top:8px; background:var(--surface); border-right:1px solid var(--rule);
+    padding-top:6px; background:var(--surface); border-right:1px solid var(--rule);
     z-index:40; overflow:hidden; transition:width .13s ease;
   }
   #views:hover, #views:focus-within { width:186px; }
   .view {
     display:flex; align-items:center; gap:11px; flex:none;
-    padding:8px 0 8px 12px; border:0; background:none; color:var(--ink-2);
+    padding:7px 0 7px 13px; border:0; background:none; color:var(--ink-2);
     font:600 13px var(--font-sans); letter-spacing:-0.01em; white-space:nowrap;
     border-left:2px solid transparent; text-align:left;
   }
-  .view i { font-style:normal; width:14px; flex:none; text-align:center;
-            font-size:12px; color:var(--ink-faint); }
+  .view i { display:flex; width:16px; height:16px; flex:none;
+            color:var(--ink-faint); }
+  .view i svg { width:16px; height:16px; }
   .view b { display:flex; flex-direction:column; gap:2px; font-weight:600;
             opacity:0; transition:opacity .13s ease; }
   .view em { font:400 10.5px/1.3 var(--font-sans); font-style:normal;
@@ -316,14 +317,22 @@
 </head>
 <body>
 <nav id="views">
-  <button class="view on" data-tab="graph">
-    <i>▤</i><b>explore<em>one level at a time</em></b></button>
-  <button class="view" data-tab="map">
-    <i>▦</i><b>whole repo<em>every file at once</em></b></button>
-  <button class="view" data-tab="report">
-    <i>▲</i><b>findings<em>cycles, dead code, blast</em></b></button>
+  <button class="view on" data-tab="graph"><i>
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"
+         stroke-linecap="round"><rect x="1.5" y="3" width="4" height="10"/>
+         <rect x="7" y="3" width="3" height="6"/><rect x="11.5" y="3" width="3" height="8"/></svg>
+    </i><b>explore<em>one level at a time</em></b></button>
+  <button class="view" data-tab="map"><i>
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+      <rect x="1.5" y="1.5" width="5" height="5"/><rect x="9.5" y="1.5" width="5" height="5"/>
+      <rect x="1.5" y="9.5" width="5" height="5"/><rect x="9.5" y="9.5" width="5" height="5"/></svg>
+    </i><b>whole repo<em>every file at once</em></b></button>
+  <button class="view" data-tab="report"><i>
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"
+         stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.2 14.5 13.5h-13z"/>
+      <path d="M8 6.6v3"/><path d="M8 11.6v.01"/></svg>
+    </i><b>findings<em>cycles, dead code, blast</em></b></button>
 </nav>
-<span class="brand" id="repo" title="{{.Root}}">cairn</span>
 <div id="chips"></div>
 <div id="bar">
   <input id="q" placeholder="filter" autocomplete="off">
@@ -1650,7 +1659,7 @@ function renderCrumbs() {
   // A back button, because a breadcrumb is only obvious once you already know
   // it is one. Two levels down inside examples/ there was nothing on screen
   // that looked like a way out.
-  const parts = [];
+  const parts = [`<span class="brand" title="${esc(DATA.root || '')}">cairn</span>`];
   if (focus.length) parts.push(`<button class="crumb back" data-up="${focus.length - 1}" title="back (esc)">←</button>`);
   parts.push(`<button class="crumb" data-up="0">${esc(repoName())}</button>`);
   for (let i = 0; i < focus.length; i++) {
