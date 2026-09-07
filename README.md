@@ -1,13 +1,38 @@
 # cairn
 
-**See what your software actually depends on — and give an agent a way to find it.**
+**See what your software actually depends on.**
+
+## What this is, honestly
+
+Dependency graphs are not new. `madge`, `dependency-cruiser`, `knip` and every language server
+have drawn them for years, and this does not invent anything they missed.
+
+I built it to learn how one actually works — how a string like `"./utils"` becomes a file, which
+turns out to be the hard part and the part every tool quietly gets wrong at the edges — and then
+spent most of the time trying to break it and writing down where it loses.
+
+That second half is the part worth reading. Every headline number in here has been revised
+downward at least once after being measured properly:
+
+| claimed | measured | where |
+|---|---|---|
+| `verify` at 100% precision/recall | **91.82% / 90.79%** | 11 repos, 18,199 specifiers |
+| "grep finds ~40% of the answer" | **14%** | 50 repos, 194 questions |
+| "cairn answers in ~50 tokens" | true over MCP, **~6,600** for CLI JSON | both now labelled |
+
+And four real bugs surfaced only because something was measured rather than used:
+
+- a directory named `build/` was skipped **everywhere**, hiding 95 files of hand-written source
+- an `exports` map fell through to Go's randomised map iteration, so **319 edges in tanstack-query
+  resolved differently between two runs of an unchanged repo**
+- one malformed byte on the MCP pipe wedged the server permanently — silent, 0% CPU, looked like a hang
+- a package importing **itself** by name resolved to an external package instead of its own file
 
 Abstraction has always been how software gets built. AI writing your code is the newest layer of
 it, and the thing underneath hasn't gone anywhere. Something still has to be true about how your
 files connect, whoever or whatever wrote them.
 
-cairn works that layer out from the code itself. Point it at a repo it has never seen. No config,
-nothing to adopt.
+Point it at a repo it has never seen. No config, nothing to adopt.
 
 ```
 cairn mcp                            serve the graph to a coding agent over stdio
@@ -334,7 +359,8 @@ that is vaguely right about five.
 Deliberately out of scope: resolving *into* package internals, and guessing at dynamic
 dependencies.
 
-**This is a learning project, not a supported product.** `DESIGN.md` records every decision, the
+**This is a learning project, not a supported product.** It was built to understand module
+resolution, and the measuring was the point rather than the polish. `DESIGN.md` records every decision, the
 alternatives rejected, and the bugs found along the way — including the ones only real
 repositories found, such as `build/` being skipped everywhere until a 34-repo sweep showed 95
 files of hand-written source silently missing.
