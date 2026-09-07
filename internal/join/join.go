@@ -22,7 +22,7 @@ type Report struct {
 	PackageEdges int
 	// UnusedDeclared are packages package.json asks for that no file imports.
 	//
-	// This is not proof they are unused — a package can be needed by a config
+	// This is not proof they are unused - a package can be needed by a config
 	// file, a build step, or a plugin loaded by name. It is a strong hint, and
 	// it is labelled as one.
 	UnusedDeclared []string
@@ -62,7 +62,7 @@ func Apply(g *graph.Graph, pg *pkgs.Graph) *Report {
 	}
 
 	// Package-to-package edges. A dependency naming something not installed is
-	// skipped rather than invented — an edge to a node that does not exist
+	// skipped rather than invented - an edge to a node that does not exist
 	// would corrupt every traversal downstream.
 	for _, name := range pg.Names() {
 		from := graph.NodeID(graph.Package, name)

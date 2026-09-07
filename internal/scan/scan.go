@@ -37,7 +37,7 @@ var skipDirs = map[string]bool{
 	".svelte-kit": true, ".vercel": true, ".cache": true,
 }
 
-// outputDirs hold generated code — but only where they are actually output.
+// outputDirs hold generated code - but only where they are actually output.
 //
 // These names are also perfectly ordinary names for source directories, and
 // skipping them everywhere silently loses real code. A 34-repository sweep
@@ -113,7 +113,7 @@ type Result struct {
 	// discovered by a CI failure rather than by anyone reading the code.
 	CaseMismatches []Unresolvable
 
-	// Unanalyzable counts import(expr) calls — real dependencies on something
+	// Unanalyzable counts import(expr) calls - real dependencies on something
 	// we cannot name. Reported separately because they are a different problem
 	// from a broken import.
 	Unanalyzable []Unresolvable
@@ -134,7 +134,7 @@ type Result struct {
 	//
 	// The resolver discovers these to resolve cross-package imports and then
 	// threw them away. They are the truest module boundary a repo declares
-	// about itself — better than any heuristic over directory names — so the
+	// about itself - better than any heuristic over directory names - so the
 	// module map and everything built on it need them to escape the scan.
 	Workspaces []Workspace
 
@@ -237,7 +237,7 @@ func RunWith(dir string, opts Options) (*Result, error) {
 	// filepath.WalkDir reports a missing root through the callback, which
 	// ignores errors so an unreadable subdirectory cannot abort a scan. The
 	// result was that a typo'd path produced "0 files, 0 imports, 0%
-	// unresolved" and exit status 0 — indistinguishable from a clean scan of a
+	// unresolved" and exit status 0 - indistinguishable from a clean scan of a
 	// real repo, which is the worst way to be wrong.
 	info, err := os.Stat(root)
 	if err != nil {
@@ -361,7 +361,7 @@ func attachPackages(root string, res *Result, opts Options) {
 // parseAll fans out across CPUs and funnels results back through one channel.
 //
 // Each worker reads a file, hashes it, and consults the cache before parsing.
-// The read has to happen regardless — hashing is a few microseconds on top,
+// The read has to happen regardless - hashing is a few microseconds on top,
 // and parsing is what actually costs.
 func parseAll(root string, files []string, parser lang.Parser, ix *index.Index) <-chan parsed {
 	out := make(chan parsed, 64)

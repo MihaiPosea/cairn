@@ -8,7 +8,7 @@ plus every file it has to read. Its answer is "files that mention the name".
 WITH cairn: one tool call. Its answer is the resolved import graph.
 
 Ground truth is cairn's verified graph, so this measures whether the grep
-route even arrives at the right set — not only what it costs to get there.
+route even arrives at the right set - not only what it costs to get there.
 """
 import json, os, random, re, subprocess, statistics as st, sys, time
 

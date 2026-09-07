@@ -120,7 +120,7 @@ import "./spaces in name";`)
 	}
 	t.Logf("files=%d unresolved=%d", res.FilesScanned, len(res.Unresolved))
 	for _, u := range res.Unresolved {
-		t.Errorf("unresolved %s:%d %q — %s", u.File, u.Line, u.Specifier, u.Reason)
+		t.Errorf("unresolved %s:%d %q - %s", u.File, u.Line, u.Specifier, u.Reason)
 	}
 	if res.FilesScanned < len(names) {
 		t.Errorf("scanned %d files, want at least %d", res.FilesScanned, len(names))

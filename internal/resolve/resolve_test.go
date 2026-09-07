@@ -178,7 +178,7 @@ func TestMissingRelativeFileExplainsItself(t *testing.T) {
 		t.Fatalf("got %v, want Unresolved", got.Kind)
 	}
 	if got.Reason == "" {
-		t.Error("Unresolved must carry a Reason — it is shown to users")
+		t.Error("Unresolved must carry a Reason - it is shown to users")
 	}
 }
 
@@ -208,7 +208,7 @@ func TestNonCodeExtensionsResolve(t *testing.T) {
 // Almost every modern package publishes "./package.json": "./package.json" in
 // its exports, and the old reader treated that as just another key to fall
 // back to. Because Go randomises map iteration it won a coin flip: measured on
-// tanstack-query, 319 edges — a twelfth of the graph — pointed at
+// tanstack-query, 319 edges - a twelfth of the graph - pointed at
 // package.json on one run and at src/index.ts on the next, for an unchanged
 // repository.
 func TestWorkspaceExportsNeverResolveToTheManifest(t *testing.T) {
@@ -329,7 +329,7 @@ func TestAPackageCanImportItselfByName(t *testing.T) {
 }
 
 // Without an exports field Node does not permit self-reference, so neither
-// should this — treating the name as external is then the correct answer.
+// should this - treating the name as external is then the correct answer.
 func TestSelfReferenceNeedsAnExportsField(t *testing.T) {
 	root := repo(t, map[string]string{
 		"package.json": `{"name":"mylib","main":"./src/index.ts"}`,
@@ -371,7 +371,7 @@ func TestARelativeImportOfADirectoryReadsItsManifest(t *testing.T) {
 }
 
 // The manifest wins over index when both could answer, because that is the
-// order Node uses — a directory that names an entry means it.
+// order Node uses - a directory that names an entry means it.
 func TestADirectoryManifestBeatsItsIndexFile(t *testing.T) {
 	root := repo(t, map[string]string{
 		"package.json":     `{"name":"root"}`,

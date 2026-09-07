@@ -1,11 +1,11 @@
 # Design notes
 
 Written as the thing is built, not afterwards. Each entry records what was
-chosen and — more usefully — what was rejected and why.
+chosen and - more usefully - what was rejected and why.
 
 ---
 
-## Phase 1 — the graph
+## Phase 1 - the graph
 
 **Config format: JSON, not YAML.**
 Rejected YAML to keep the dependency count at zero for now. `encoding/json` is
@@ -15,7 +15,7 @@ by hand.
 **Ordering: Kahn's algorithm, not depth-first search.**
 Both produce a valid topological order and DFS gets cycle detection almost for
 free. Chose Kahn's because phase 4's concurrent scheduler needs exactly the same
-structure — a count of unmet dependencies per job, decremented as jobs finish —
+structure - a count of unmet dependencies per job, decremented as jobs finish -
 so implementing it here means the scheduler is a small step rather than a
 rewrite.
 
@@ -35,25 +35,25 @@ so it costs nothing in the normal case.
 convenient now and wrong from phase 3, when a job may depend on another job
 without reading any of its outputs.
 
-<!-- ## Phase 2 — execution
+<!-- ## Phase 2 - execution
      Decision: fail-fast vs keep-going, and why.
      Decision: how command output is captured and interleaved. -->
 
 ---
 
-## M0 — the pivot, and the graph core
+## M0 - the pivot, and the graph core
 
 **The front door changed. The graph did not.**
 The original design was a caching build system: you write a config listing jobs and their
 dependencies, cairn runs it and skips work it has already done. The engineering was sound and the
-entry point was fatal — using it meant migrating your entire build, which nobody does for a
+entry point was fatal - using it meant migrating your entire build, which nobody does for a
 stranger's project.
 
 Same graph, different source. Instead of reading a config you hand-wrote, cairn extracts the graph
 from the code itself. Nothing to adopt, so anyone can try it in ten seconds.
 
 Rejected: keeping both front doors from the start. The caching work only becomes *safe* once the
-inferred graph is measured as correct — a missed edge is cosmetic when you're drawing a picture and
+inferred graph is measured as correct - a missed edge is cosmetic when you're drawing a picture and
 catastrophic when you're skipping a build step. Caching is deferred to M8, after the correctness
 harness exists.
 
@@ -77,21 +77,21 @@ unchanged repo produce byte-identical output. Without that, none of this is test
 
 **Cycles are an error today and will not be at M4.**
 A cycle in a build graph means nothing can start, so erroring is correct. A cycle in an *import*
-graph is legal and common — JavaScript permits circular imports and real codebases are full of them.
+graph is legal and common - JavaScript permits circular imports and real codebases are full of them.
 M4 replaces the error with strongly-connected-component condensation, so a cycle becomes a finding
 rather than a failure. The erroring version is built first because it's what makes the reason for the
 other one obvious.
 
 ---
 
-## M3 — the package graph
+## M3 - the package graph
 
 **Four lockfile formats, and none of them agree.**
 npm writes JSON keyed by install path. bun writes JSONC with positional arrays. pnpm writes YAML
 with peer-dependency suffixes glued onto version keys. yarn writes two different formats depending
 on major version. All four are supported, plus a `node_modules` fallback for repos with none.
 
-`bun.lock` turned out to be JSONC — trailing commas and all — so it reuses the byte scanner written
+`bun.lock` turned out to be JSONC - trailing commas and all - so it reuses the byte scanner written
 for `tsconfig.json`. That is the argument for having written the scanner rather than pulling in a
 JSON5 dependency: the second use case arrived within a day.
 
@@ -106,7 +106,7 @@ what *should* be installed. When someone is debugging why a build works locally 
 gap between the two is the answer, and hiding it would remove the most useful thing here.
 
 **Packages are single units; their internals never enter the file graph.**
-This was originally scoped to include `exports` map resolution — conditions, subpath patterns, the
+This was originally scoped to include `exports` map resolution - conditions, subpath patterns, the
 whole swamp. Building it revealed the work was unnecessary: `exports` maps only matter if you resolve
 *into* a package's source files, and the design treats each package as one node. Dropping it removed
 the single largest chunk of planned work with no loss of capability.
@@ -116,12 +116,12 @@ A package can be needed by a config file, a build plugin, or something loading i
 Reporting it as proof would make the tool confidently wrong in a way users would discover the hard
 way. Verified against `personal-website`: the three it flags have zero references anywhere in source.
 
-**"Imported but not declared" is reported as a real bug**, because it is one — the code works only
+**"Imported but not declared" is reported as a real bug**, because it is one - the code works only
 because something else happened to install the package, and it will break for the next person.
 
 ---
 
-## M4 — the five answers
+## M4 - the five answers
 
 **Every question is a traversal; the work is choosing which edges count.**
 The algorithms are textbook. Being careful about edge kinds is not, and it is where tools in this
@@ -134,8 +134,8 @@ space get people hurt:
 - *Cost* follows only package-to-package edges.
 
 **Entry-point detection is the real work in dead-code analysis.**
-Reachability is trivial. Knowing where to start is not. Nothing "imports" a Next.js page — the
-framework loads it by filename convention — so a naive implementation declares an entire app dead.
+Reachability is trivial. Knowing where to start is not. Nothing "imports" a Next.js page - the
+framework loads it by filename convention - so a naive implementation declares an entire app dead.
 cairn recognises the app-router and pages-router conventions, middleware, instrumentation, config
 files, ambient declarations, scripts and tests, and reports the reason each file was treated as an
 entry point rather than asserting it silently.
@@ -151,21 +151,21 @@ cannot afford, because large repos are the ones that need it.
 
 **`why` falls back from your code to package.json.**
 Asking why `scheduler` is installed originally returned "nothing reaches it", which is true and
-useless — nothing in your code imports it, but `react-dom` does. The query now tries your own files
+useless - nothing in your code imports it, but `react-dom` does. The query now tries your own files
 first (the actionable answer) and falls back to what package.json declares, reporting which of the
 two it used.
 
 **A determinism bug the tests caught.**
 Parse results arrive from the worker pool in whatever order the scheduler and disk decide, so nodes
 discovered during resolution were added to the graph in a different order every run. The graph was
-always equivalent, never identical — which silently breaks every golden test and makes two scans of
+always equivalent, never identical - which silently breaks every golden test and makes two scans of
 an unchanged repo diff against each other. Fixed by collecting results and processing them in sorted
 path order: parsing stays parallel, graph construction becomes deterministic. The property was
 claimed in the M0 notes and was not actually true until now.
 
 ---
 
-## Performance — parser pooling
+## Performance - parser pooling
 
 Measured on a generated 5,000-file repo with 10,442 imports:
 
@@ -185,7 +185,7 @@ never plausible, and the only reason it was visible at all is that the target
 
 ---
 
-## M5 — the incremental index
+## M5 - the incremental index
 
 Measured on the generated 5,000-file repo:
 
@@ -199,7 +199,7 @@ Measured on the generated 5,000-file repo:
 mtime changes on a fresh checkout, a `touch`, or clock skew without the file
 changing, and does *not* change when a file is restored from backup. It is
 wrong in both directions. Hashing costs one read, and the read has to happen
-anyway — parsing is what actually costs.
+anyway - parsing is what actually costs.
 
 **The extension is part of the key.**
 The same bytes parsed as `.ts` and as `.tsx` produce different trees, because
@@ -208,7 +208,7 @@ would serve one file's parse for the other.
 
 **A format version, checked on load.**
 Without it, upgrading cairn silently serves parse results produced by the old
-parser — a stale cache indistinguishable from a correct one. On any mismatch,
+parser - a stale cache indistinguishable from a correct one. On any mismatch,
 corruption, or decode failure the whole cache is discarded. That costs one slow
 scan; trusting a bad cache costs a wrong answer.
 
@@ -220,12 +220,12 @@ make branch switching free: checking out an old branch finds its files already
 cached. The whole 5,000-file cache is 528 KB.
 
 Rejected: SQLite. The access pattern is "load everything at startup, save
-everything at exit" — that is a file, not a database. A single gob file needs
+everything at exit" - that is a file, not a database. A single gob file needs
 no dependency and no schema migration.
 
 ---
 
-## M6 — measuring whether the graph is true
+## M6 - measuring whether the graph is true
 
 **The oracle is TypeScript's own resolver, not a second implementation.**
 `internal/verify` runs `ts.preProcessFile` and `ts.resolveModuleName` over the same files and diffs
@@ -250,7 +250,7 @@ resolvers failed on the same specifier.
 Corrupting the tsconfig alias substitution dropped precision from 100% to **2.83%** with 10,146
 disagreements on the alias-heavy repo. The harness detects real breakage.
 
-**But the same sabotage was invisible on `travel-site`** — which has a `@/*` alias configured in its
+**But the same sabotage was invisible on `travel-site`** - which has a `@/*` alias configured in its
 tsconfig and not one import that uses it. That is the important finding, and it is why
 `verify` now reports **which rules the repo actually exercised**:
 
@@ -261,12 +261,12 @@ relative             33
 ```
 
 No `tsconfig-paths` line. A perfect score on that repo says nothing whatsoever about alias handling.
-Reporting coverage turns "we passed" into "we passed, on these rules" — which is the only version of
+Reporting coverage turns "we passed" into "we passed, on these rules" - which is the only version of
 the claim that survives someone checking it.
 
 ---
 
-## M7 — the view
+## M7 - the view
 
 **One self-contained HTML file, not a Next.js app.**
 The plan called for a separate frontend. Building it revealed that a single embedded page does the
@@ -277,7 +277,7 @@ exported file is 19 KB for a 28-node repo, opens with a double click, and needs 
 **Layered by depth, never force-directed.**
 Every dependency visualiser that reaches for a force-directed layout produces the same hairball, and
 the hairball is what people mean when they call these tools useless. Nodes sit in columns by their
-*longest* path from an entry point — longest, not shortest, or a file reached both directly and
+*longest* path from an entry point - longest, not shortest, or a file reached both directly and
 through five hops lands in the wrong column and its edges point backwards.
 
 Depth uses `TopoOrder`, so the graph package's own algorithm does the work. When the graph has a
@@ -297,7 +297,7 @@ Verified in a real browser, not assumed: rendered, clicked a node, confirmed the
 
 ---
 
-## M8 — the payoff: what needs re-running
+## M8 - the payoff: what needs re-running
 
 The original plan was a build cache. Building the rest revealed a better shape with the same
 insight and none of the migration cost: **`cairn affected`** takes what git says changed, walks the
@@ -311,9 +311,9 @@ A missed edge in a picture is a slightly wrong picture. A missed edge here is a 
 have run and did not. So every condition that could make the answer unsound produces a **bail** with
 a stated reason and the instruction to run everything:
 
-- the repo contains `import()` with a computed path — files can be loaded invisibly
-- the repo has any unresolved import — the graph is incomplete
-- a changed file is not in the graph — a config change can affect anything
+- the repo contains `import()` with a computed path - files can be loaded invisibly
+- the repo has any unresolved import - the graph is incomplete
+- a changed file is not in the graph - a config change can affect anything
 
 That last one fires on `tsconfig.json`, `next.config.mjs`, and every lockfile, which is correct:
 change a tsconfig `paths` entry and every conclusion in this tool is void.
@@ -335,7 +335,7 @@ tests never touched. Listed by how much damage each would have done.
 
 **1. A library's entire contents reported as dead.**
 Entry-point detection recognised framework conventions and nothing else. A published package's only
-signal is its `package.json` — `main`, `module`, `exports`, `bin` — which was never read, so nothing
+signal is its `package.json` - `main`, `module`, `exports`, `bin` - which was never read, so nothing
 was an entry point, so every file was unreachable. The tool would have advised deleting the whole
 codebase. Fixed by reading the manifest, and by refusing to answer at all when there are zero entry
 points: reachability from an empty root set marks everything dead, and that is never a useful answer.
@@ -345,21 +345,21 @@ points: reachability from an empty root set marks everything dead, and that is n
 on macOS and Windows. That produced a *second* node for the same file: the real one lost its inbound
 edges, so it looked dead with a blast radius of zero, while the phantom took its place. It also hid
 a bug that only surfaces on Linux CI. Fixed by replacing stat-per-candidate with cached directory
-listings, which are case-exact — and 20% faster, since the ladder tries nine extensions per import
+listings, which are case-exact - and 20% faster, since the ladder tries nine extensions per import
 and one listing amortises across all of them. Mismatches are now reported.
 
 **3. Imports escaping the repository root** created nodes with `../` paths that every traversal then
 treated as project files.
 
 **4. Bundler resource queries did not resolve.** `./shader.glsl?raw`, `./worker?worker`,
-`./icon.svg#frag` — common in Vite and webpack, and silently inflating the unresolved rate.
+`./icon.svg#frag` - common in Vite and webpack, and silently inflating the unresolved rate.
 
 **5. `import x = require("y")` was not extracted at all.** TypeScript's import-equals form nests its
 string inside an `import_require_clause` rather than hanging it off the statement, so the
 direct-child lookup missed it. Still common in older TypeScript and throughout `.d.ts` files.
 
 **6. Specifiers containing escapes were truncated.** `"./with space"` became `"./with"` and then
-failed to resolve for no visible reason — tree-sitter splits such a string into
+failed to resolve for no visible reason - tree-sitter splits such a string into
 fragment/escape/fragment and only the first was read.
 
 **7. Aliased dependencies got the wrong name.** `"lodash-es": "npm:lodash@^4"` was keyed as
@@ -373,7 +373,7 @@ simply has no `packages` map. It sent people looking for a corrupt file.
 **9 and 10. A typo'd path scanned "successfully".**
 `filepath.WalkDir` reports a missing root through the callback, which ignores errors so that one
 unreadable subdirectory cannot abort a whole scan. The consequence was that `cairn scan /typo/path`
-printed "0 files, 0 imports, 0% unresolved" and exited 0 — indistinguishable from a clean scan of a
+printed "0 files, 0 imports, 0% unresolved" and exited 0 - indistinguishable from a clean scan of a
 real repo. Same for passing a file instead of a directory. Both now fail before the walk starts.
 
 Confirmed correct and left alone: BOMs, CRLF line numbers, empty and binary files, import
@@ -394,7 +394,7 @@ code was written for. Four techniques that do not share that blind spot:
 **Fuzzing.** Go's native fuzzer found a real bug in six seconds: `import "0\000"` decodes an octal
 escape to a NUL byte, and that specifier then flowed into filepath handling, a node ID, the JSON
 output and the HTML page. Specifiers containing control characters are now reported as unanalyzable
-rather than dropped — something genuinely is being imported.
+rather than dropped - something genuinely is being imported.
 
 After the fix: 76k parser executions, 8.2M resolver executions, 13.7M JSONC-scanner executions, all
 clean.
@@ -402,7 +402,7 @@ clean.
 The fuzzers assert *properties*, not outputs, because a fuzzer has no idea what the right answer is:
 
 - no input may make the resolver return a path that escapes the repository
-- stripping comments must never change what valid JSON parses to — a mangled tsconfig would silently
+- stripping comments must never change what valid JSON parses to - a mangled tsconfig would silently
   lose path aliases, and the only symptom would be a mysteriously high unresolved rate
 - a parsed specifier may never contain a NUL or a newline
 
@@ -415,11 +415,11 @@ terminates.
 **A mutation soak.** The incremental index is where a bug is most likely and least visible: a stale
 entry produces a plausible graph that is quietly out of date, and nothing in the output would say so.
 So the soak edits, adds, deletes, renames and reverts files across 40 rounds, and after every single
-step compares the cached scan against one with the cache disabled — node for node, edge for edge.
+step compares the cached scan against one with the cache disabled - node for node, edge for edge.
 
 **An injection tripwire.** File paths and import specifiers both come off disk and are embedded in
 the exported page. `encoding/json` escapes `<`, `>` and `&` by default, which is the only thing
-making that safe — and it is exactly the kind of protection someone removes while prettifying output
+making that safe - and it is exactly the kind of protection someone removes while prettifying output
 with `SetEscapeHTML(false)`. The test asserts that exactly one `</script>` survives in the rendered
 document, with a comment saying why.
 
@@ -451,8 +451,8 @@ graph.
 
 Four things this found:
 
-**A monorepo produced a graph with no edges at all.** Every cross-package import — `@acme/ui`
-— resolved to an external package instead of the source file in the next folder, and every
+**A monorepo produced a graph with no edges at all.** Every cross-package import - `@acme/ui`
+- resolved to an external package instead of the source file in the next folder, and every
 per-package tsconfig alias became a phantom dependency on a package named `@`. Measured on a
 three-package fixture: three file nodes, zero edges. That is worse than an error, because it looks
 like a working answer for a small project. Fixed by discovering workspaces from `package.json`
@@ -464,7 +464,7 @@ importing file*.
 when one is not. With a child extending a parent and neither declaring `baseUrl`, a shared base sent
 the child's aliases to the parent's directory. Each alias rule now carries its own base.
 
-**Vue, Svelte and Astro were invisible.** Not partially handled — the file types were skipped
+**Vue, Svelte and Astro were invisible.** Not partially handled - the file types were skipped
 outright, so a Vue app scanned as a handful of `.ts` utilities with no components, which reads as a
 working scan of a much smaller project. Their imports are ordinary TypeScript wrapped in markup, so
 the blocks are extracted and handed to the same grammar, with line offsets preserved so a reported
@@ -473,7 +473,7 @@ line points at the real line in the `.vue` file.
 Rejected: adding three more tree-sitter grammars. One parser to keep correct beats four, and the
 code inside a `<script>` really is just TypeScript.
 
-**React Native platform extensions.** `./Button` resolving to `Button.ios.tsx` — every
+**React Native platform extensions.** `./Button` resolving to `Button.ios.tsx` - every
 platform-split component in an RN app was an unresolved import. Tried after the plain ladder so an
 unqualified file always wins, which is what a bundler does too.
 
@@ -495,19 +495,19 @@ scanned, and they immediately found what twelve hand-written fixtures had not.
 
 **A matched-but-missing alias short-circuited everything.**
 shadcn maps `"react": ["./node_modules/@types/react"]`, and returning "unresolved" the moment an
-alias matched meant `react` itself was reported as a broken import — 5,766 times. TypeScript
+alias matched meant `react` itself was reported as a broken import - 5,766 times. TypeScript
 continues to `node_modules` when a path mapping finds no file, and so does cairn now. The phantom
 `@` package this once guarded against is prevented instead by validating the package name, which is
 where the check belonged.
 
 **Framework virtual modules were reported as broken imports.**
 `astro:content`, `virtual:uno.css`, `bun:sqlite`, `$app/stores`, `#imports`, `npm:`, `jsr:`,
-`https:` — 546 in the Astro repo alone. They are recognised structurally, by the fact that `word:` is
+`https:` - 546 in the Astro repo alone. They are recognised structurally, by the fact that `word:` is
 not a file path, rather than by keeping a list of frameworks that would need updating.
 
 **Bundler aliases live outside tsconfig.**
 Vite, Rollup, webpack and Rspack declare them in JavaScript. Many projects mirror them into tsconfig
-for the editor, which is why this hid for so long — the fixture that "passed" was only passing
+for the editor, which is why this hid for so long - the fixture that "passed" was only passing
 because the alias silently became a phantom package. They are now read from the config's syntax
 tree, evaluating far enough to take the last string literal, which covers `path.resolve(__dirname,
 "./src")` and `fileURLToPath(new URL("./src", import.meta.url))` without executing anything.
@@ -526,7 +526,7 @@ one line:
 exist in a fresh checkout
 ```
 
-Aggregating by category rather than by largest group is what makes that sentence true — astro's
+Aggregating by category rather than by largest group is what makes that sentence true - astro's
 spread across ninety-odd path prefixes, but 98% share one cause, and the biggest single group is
 only 28%.
 
@@ -535,8 +535,8 @@ only 28%.
 ## The rest of the checklist
 
 **Node subpath imports.** `#internal/*` declared in `package.json` `"imports"` were being written off
-as virtual modules alongside `astro:` and `virtual:`. They are genuinely resolvable — the manifest
-explains them — so they now resolve properly, using the nearest `package.json` and preferring
+as virtual modules alongside `astro:` and `virtual:`. They are genuinely resolvable - the manifest
+explains them - so they now resolve properly, using the nearest `package.json` and preferring
 source-shaped conditions. A `#` specifier stays virtual only when no manifest accounts for it.
 
 **Hostile filesystems.** A real machine has directories you cannot read, symlinks pointing nowhere,
@@ -554,10 +554,10 @@ fine.
 | `cycles` | 1.1 s |
 | `dead` | 1.0 s |
 | `blast` | 2.1 s |
-| `export` | **hung — over 2 minutes** |
+| `export` | **hung - over 2 minutes** |
 
 That last one was a real bug. The web payload computed a *transitive* blast radius for every node in
-order to decide which to draw — O(nodes × edges), or 50,000 × 74,843. Ranking now uses direct
+order to decide which to draw - O(nodes × edges), or 50,000 × 74,843. Ranking now uses direct
 dependents, one pass over the edges, and the exact transitive figure is computed only for the ≤1,200
 nodes that survive, always against the full graph so the number stays true. Export went from a hang
 to 7 seconds.
@@ -585,19 +585,19 @@ in the TanStack Query repo.
 | shadcn/ui | 3,947 | 19,895 | 23.24% |
 
 75,680 imports across nine repositories. The two high numbers are true findings about an unbuilt
-checkout, not failures — and the tool now says which, in one line.
+checkout, not failures - and the tool now says which, in one line.
 
 ---
 
 ## Imports of unbuilt output
 
-A monorepo package routinely imports its own compiled output —
-`../../../dist/core/errors/index.js` — which does not exist until the repo is built. In the Astro
+A monorepo package routinely imports its own compiled output -
+`../../../dist/core/errors/index.js` - which does not exist until the repo is built. In the Astro
 repo that was 917 imports, 98% of everything unresolved, and the first instinct was to call it
 unfixable: cairn does not run builds, and never should.
 
 But the compiled file is a build of a source file that *is* present, and for a dependency graph the
-source is the better endpoint — it is the same edge, and it is a file someone can open. So when a
+source is the better endpoint - it is the same edge, and it is a file someone can open. So when a
 path lands in a build directory with nothing in it, the source twin is tried:
 
 ```
@@ -610,14 +610,14 @@ Only ever after the literal path fails, so a repo that *has* been built resolves
 
 **Anchoring on the nearest build directory is wrong**, which cost 92 imports to notice.
 `dist/types/public/common.js` contains two names from the table, and rewriting the inner one gives
-`dist/src/public/common.js` — nonsense. Rewriting the outer one gives `src/types/public/common.ts`,
+`dist/src/public/common.js` - nonsense. Rewriting the outer one gives `src/types/public/common.ts`,
 the real file. Outermost first.
 
 ### What genuinely cannot be resolved
 
 shadcn/ui's 4,623 remain, and should. Its `@/styles/base-nova/*` imports name files the registry
 produces during a build; `apps/v4/styles/` contains a README and nothing else. There is no source
-twin because there is no source — resolving them would mean running the repo's build, which means
+twin because there is no source - resolving them would mean running the repo's build, which means
 executing a stranger's code, which is not a trade this tool makes.
 
 That is the honest line between the two: **a compiled file has a source you can find; a generated
@@ -639,10 +639,10 @@ resolution rule that was missing rather than a repo that was broken.
 | root-absolute `/x.svg` → nearest project's `public/` | turborepo |
 
 **Declaration files were the largest single miss.** A repo importing `./utils` where only
-`utils.d.ts` exists is entirely normal — ambient typings, generated declarations, `.d.ts`-only test
+`utils.d.ts` exists is entirely normal - ambient typings, generated declarations, `.d.ts`-only test
 suites. They go last in the ladder, because an implementation should always beat its declaration.
 
-**A package importing its own bundle** — `./dist/compiler-core.cjs.prod.js` — has no per-file source
+**A package importing its own bundle** - `./dist/compiler-core.cjs.prod.js` - has no per-file source
 twin, because the bundle is built from all of `src`. The package's own entry point is the right
 endpoint: the import means "this package", and that is where its code starts.
 
@@ -664,7 +664,7 @@ Everything else that does not resolve is *named*:
 | test fixtures | the import is meant to fail; that is the test |
 | scaffolding templates | the file appears when the template is used |
 | codegen output | written by a framework or generator, never committed |
-| an entire directory tree is absent | produced by a build — nobody typos the same path 4,611 times |
+| an entire directory tree is absent | produced by a build - nobody typos the same path 4,611 times |
 | native binaries | for platforms other than this one |
 | build output with no source | run the repo's build |
 
@@ -682,7 +682,7 @@ would stop meaning anything.
 ## Fifty-four repositories
 
 Twelve hand-written fixtures test what the author imagined. Nine real repositories test what a few
-real projects do. Fifty-four test the ecosystem — and every one of them found something the previous
+real projects do. Fifty-four test the ecosystem - and every one of them found something the previous
 tier could not.
 
 Each repo is cloned shallow, scanned, recorded, and deleted, so the sweep runs in bounded disk.
@@ -697,18 +697,18 @@ export default 'hello vite'
 
 read as a re-export of a module named `hello vite`. The string is a direct child of the export
 statement either way; only the `from` keyword separates a re-export from a plain exported value, and
-that check was missing — since M1. An invented edge is worse than a missing one: a missing edge
+that check was missing - since M1. An invented edge is worse than a missing one: a missing edge
 understates the graph, a fabricated one puts a node in it that no code mentions. Removing it deleted
 **105 phantom imports from the Vite repository alone**.
 
-**Glob imports were dropping edges silently.** Parcel and Vite let one specifier match many files —
+**Glob imports were dropping edges silently.** Parcel and Vite let one specifier match many files -
 `../intl/*.json` pulls in every locale beside it. Treated as a single path it resolved to nothing,
 so React Spectrum's dependency on all of those files was simply absent. A glob now becomes one edge
 per match, because that is what the import depends on.
 
 **The clustering key included the filename**, which split one shared cause into one group per file.
 tldraw's auto-generated asset manifest imports 179 images from `./embed-icons/`, none of which exist
-in a fresh clone — each became a group of one, so the systematic-absence rule never fired and all 179
+in a fresh clone - each became a group of one, so the systematic-absence rule never fired and all 179
 read as separate mistakes.
 
 **Five framework conventions**, each invisible until a repo that used it showed up:
@@ -716,9 +716,9 @@ read as separate mistakes.
 | convention | repo that revealed it |
 |---|---|
 | `starters/` as a scaffolding directory | Qwik |
-| `@qwik-router-config` — a bare `@name`, which npm forbids as a package | Qwik |
-| `./+types/route` — React Router v7 typegen | React Router |
-| `<sveltekit:generated>/server.js` — a build-time placeholder | SvelteKit |
+| `@qwik-router-config` - a bare `@name`, which npm forbids as a package | Qwik |
+| `./+types/route` - React Router v7 typegen | React Router |
+| `<sveltekit:generated>/server.js` - a build-time placeholder | SvelteKit |
 | `*.gen.ts`, `*.generated.ts`, `gen/` | Cypress |
 
 **Playground code got its own category.** A playground really runs, so "this is demo code" is a
@@ -813,20 +813,20 @@ Every repository, largest first:
 | playground and example apps | 16 |
 | **unexplained** | **186** |
 
-The 186 are 165 relative paths with no matching file, spread across 25 repositories — roughly seven
+The 186 are 165 relative paths with no matching file, spread across 25 repositories - roughly seven
 per repository, in half a million imports. Spot-checked by hand: Solid imports `./jsx.js` from nine
 files and no such file exists anywhere in the package. They are broken imports in those repositories,
 which is the floor a tool that refuses to invent resolutions can reach.
 
 ---
 
-## M9 — the scoped navigator
+## M9 - the scoped navigator
 
 **The view had no ceiling, and that was the whole problem.**
 M7 chose containers over a breadcrumb so you could see where you were without reading one.
 That was right about orientation and wrong about everything else: folders could be opened
 anywhere, the whole repository stayed laid out around whatever was open, and drilling in *added*
-detail without ever removing any. Measured on excalidraw — default 66 boxes and 301 edges;
+detail without ever removing any. Measured on excalidraw - default 66 boxes and 301 edges;
 after opening five nested folders, **268 boxes and 1,159 edges across a canvas 15,084 pixels
 wide**. Someone who opened a folder to read four files got 1,159 lines across the screen.
 
@@ -835,14 +835,14 @@ drawn. Containers are gone, so a breadcrumb does the orientation job after all. 
 across nine repositories is now 253 boxes and **no** background lines; the typical level is
 under 40.
 
-**Three mechanisms, because one was not enough — and each was measured before it was chosen.**
+**Three mechanisms, because one was not enough - and each was measured before it was chosen.**
 
 *Scoping* bounds the lines. Root levels came out at 4–14 boxes and 1–25 edges on every repo.
 
 *Quiet-collapse* bounds the boxes, which scoping does not: `svelte/tests/runtime-legacy/samples/`
 is 1,209 children with zero edges among them, and `apps/v4/examples/base/` is 513. Children
 nothing in the scope connects to fold into one box. It fires on five of the nine repos and costs
-nothing on the others — `nx/src/command-line/` stays 33 boxes, `runtime-core/src/` stays 37.
+nothing on the others - `nx/src/command-line/` stays 33 boxes, `runtime-core/src/` stays 37.
 
 *A threshold* bounds what is drawn. Dense levels survive both rules above:
 `packages/excalidraw/components/` is 165 boxes and 362 edges. 362 strokes say strictly less than
@@ -851,7 +851,7 @@ Selection still draws its own, which was the only legible thing there anyway.
 
 **Edges are classified into five counted buckets, not filtered.**
 Inside, self, crossing in, crossing out, wholly outside. Counted rather than inferred, so their
-sum can be checked against the edge total — an edge belonging to no bucket is a connection the
+sum can be checked against the edge total - an edge belonging to no bucket is a connection the
 reader never learns about, and that failure is silent by nature. Conservation is asserted at
 every level of every repository. Whatever crosses the boundary goes to rails on either side
 rather than being dropped.
@@ -859,35 +859,35 @@ rather than being dropped.
 **Rejected: splitting the dominant module and merging the tail.**
 It over-split. Excalidraw's largest module became `packages/astro/test/fixtures/`-shaped noise
 and its edge count went from 7 to 81. The rule that survived splits the largest module holding
-at least a fifth of the repository, repeatedly, while the total stays within twelve — so a
+at least a fifth of the repository, repeatedly, while the total stays within twelve - so a
 monorepo shows its real top-level shape rather than either one box labelled `packages/` or nx's
 fifty-seven workspace packages.
 
 **Workspaces name modules; they do not choose the level.**
 The resolver had been discovering them to resolve cross-package imports and throwing them away.
 They are the truest boundary a repo declares about itself, so they supply names and entry
-points — but grouping by them directly gives nx 57 boxes, which is not a picture.
+points - but grouping by them directly gives nx 57 boxes, which is not a picture.
 
 **A correction to M7.** That section argued for *longest*-path depth so edges never point
-backwards. True, and it is still longest path — but the raw numbers are not usable as labels:
+backwards. True, and it is still longest path - but the raw numbers are not usable as labels:
 on excalidraw depth reached **648**, not because anything is 648 imports deep but because that
 is the longest chain the repository can string together. Depths are now ranks among the depths
 that occur, which is monotonic and so preserves the property longest path was chosen for.
 Within a scope they are recomputed over the few dozen boxes present, because a folder's global
-depth is the minimum over everything inside it — at the root, where every module contains
+depth is the minimum over everything inside it - at the root, where every module contains
 something shallow, that collapsed the entire axis into one column.
 
 **Counts left the header for a report.**
 `cycles 5 · unreachable 14` says something is wrong without saying what, where, or whether it
-matters. Each row now names the thing and what it costs — *change `packages/math/src/types.ts`
-and 531 files are downstream of it* — and clicking one goes and looks at it. Module cycles lead,
+matters. Each row now names the thing and what it costs - *change `packages/math/src/types.ts`
+and 531 files are downstream of it* - and clicking one goes and looks at it. Module cycles lead,
 because a loop between two files is often deliberate while a loop between two modules means the
 boundary is not real.
 
 **Bugs this cost, all caught by measurement rather than by reading the code.**
 Edges touching the selection were culled with everything else, so selecting a node the camera was
-not already on hid all of its connections — 98 edges drawn, 0 of them the selected node's own.
+not already on hid all of its connections - 98 edges drawn, 0 of them the selected node's own.
 Selecting did not move the camera, leaving the selection 4,300px off-screen. The halo drew the
 entire reachable set, 216 lines around a node with 10 real connections. And the scope's child
 list was declared `const` while quiet-collapse reassigns it, which only fires on repositories
-with large unconnected directories — neither excalidraw nor nx ever reached it.
+with large unconnected directories - neither excalidraw nor nx ever reached it.

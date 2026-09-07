@@ -9,8 +9,8 @@ import (
 )
 
 // A cache is only worth having if it can never change an answer. This mutates
-// a repo the way someone actually works on one — edits, additions, deletions,
-// renames, reverts — and after every step compares the cached scan against a
+// a repo the way someone actually works on one - edits, additions, deletions,
+// renames, reverts - and after every step compares the cached scan against a
 // scan with the cache disabled.
 //
 // The incremental index is the component where a bug is most likely and least

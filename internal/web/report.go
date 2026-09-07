@@ -66,13 +66,13 @@ func buildReport(res *scan.Result, mm *modules.Map, deadRep *query.DeadReport,
 }
 
 // cycleFindings leads with module cycles. A loop between two files is often
-// deliberate — a type and its guard, split for readability. A loop between two
+// deliberate - a type and its guard, split for readability. A loop between two
 // modules means the boundary between them is not real, which is a different
 // kind of statement and belongs first.
 func cycleFindings(g *graph.Graph, mm *modules.Map, used map[string]bool) []Finding {
 	// Two lists concatenated rather than one list with a weighted sort key.
 	// The key would have to be a number, and that number is also what the row
-	// displays — a module cycle of three would have rendered as "3000".
+	// displays - a module cycle of three would have rendered as "3000".
 	mods := []Finding{}
 	fileCycles := []Finding{}
 	name := map[string]string{}
@@ -98,7 +98,7 @@ func cycleFindings(g *graph.Graph, mm *modules.Map, used map[string]bool) []Find
 		sort.Strings(names)
 		mods = append(mods, Finding{
 			Title:  strings.Join(names, " ↔ "),
-			Detail: fmt.Sprintf("%d modules depend on each other in a loop — the boundary between them is not real", len(c)),
+			Detail: fmt.Sprintf("%d modules depend on each other in a loop - the boundary between them is not real", len(c)),
 			N:      len(c),
 			Go:     c[0],
 			Items:  names,
@@ -165,7 +165,7 @@ func unreachableFindings(rep *query.DeadReport) []Finding {
 }
 
 // heavyFindings ranks by blast radius: the files where a change is felt
-// furthest. Entry points are excluded — an entry point with a large reach is
+// furthest. Entry points are excluded - an entry point with a large reach is
 // the normal shape of a program, not a finding about it.
 func heavyFindings(g *graph.Graph, blast map[string]int, entries map[string]string) []Finding {
 	type row struct {
@@ -248,7 +248,7 @@ func unresolvedFindings(res *scan.Result) []Finding {
 	for _, c := range scan.ClusterUnresolved(res.Unresolved) {
 		out = append(out, Finding{
 			Title:  c.Category,
-			Detail: fmt.Sprintf("%s — for example %s", c.Prefix, c.Example),
+			Detail: fmt.Sprintf("%s - for example %s", c.Prefix, c.Example),
 			N:      c.Count,
 		})
 	}

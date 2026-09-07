@@ -208,7 +208,7 @@ func TestOverviewNamesTheModules(t *testing.T) {
 // A json.Decoder over the stream cannot survive a syntax error: its buffer
 // still holds the bad bytes, so every later Decode fails on the same ones and
 // the loop never reaches the next request. Measured before the fix: one
-// malformed frame and the server never answered again, at 0% CPU, silently —
+// malformed frame and the server never answered again, at 0% CPU, silently -
 // any client writing a stray byte to the pipe took the whole session with it.
 func TestAMalformedFrameDoesNotWedgeTheStream(t *testing.T) {
 	s := fixture(t)

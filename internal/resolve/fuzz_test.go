@@ -11,7 +11,7 @@ import (
 // FuzzResolve throws arbitrary specifiers at the resolver.
 //
 // The contract: never panic, and never return a file path that escapes the
-// repository. The second half is the one worth guarding — a resolver that can
+// repository. The second half is the one worth guarding - a resolver that can
 // be talked into pointing outside the root puts foreign paths into the graph,
 // and every traversal downstream then treats them as project files.
 func FuzzResolve(f *testing.F) {

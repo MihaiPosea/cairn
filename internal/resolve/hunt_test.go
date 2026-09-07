@@ -58,7 +58,7 @@ func TestCaseMismatch(t *testing.T) {
 	// The mismatch is reported as the filename the import asked for, after the
 	// extension ladder resolved it.
 	if got.CaseMismatch != "Utils.ts" {
-		t.Errorf("CaseMismatch = %q, want \"Utils.ts\" — this breaks on Linux and must be reported", got.CaseMismatch)
+		t.Errorf("CaseMismatch = %q, want \"Utils.ts\" - this breaks on Linux and must be reported", got.CaseMismatch)
 	}
 }
 
@@ -296,7 +296,7 @@ func TestNoSourceTwinStaysUnresolved(t *testing.T) {
 	root := hrepo(t, map[string]string{"a.ts": "", "src/other.ts": ""})
 	got := resolver(t, root).Resolve("a.ts", "./dist/missing.js")
 	if got.Kind != Unresolved {
-		t.Errorf("got %v %q, want unresolved — there is no src/missing", got.Kind, got.Path)
+		t.Errorf("got %v %q, want unresolved - there is no src/missing", got.Kind, got.Path)
 	}
 }
 
@@ -346,7 +346,7 @@ func TestDeclarationFiles(t *testing.T) {
 	}
 	// The implementation wins when both are present.
 	if got := r.Resolve("a.ts", "./lib/both"); got.Path != "lib/both.ts" {
-		t.Errorf("got %q, want lib/both.ts — an implementation beats its declaration", got.Path)
+		t.Errorf("got %q, want lib/both.ts - an implementation beats its declaration", got.Path)
 	}
 	// ESM-style ".js" specifier finding only a declaration.
 	if got := r.Resolve("a.ts", "./esm/only.js"); got.Path != "esm/only.d.ts" {
@@ -447,8 +447,8 @@ func TestGlobCannotEscapeTheRepo(t *testing.T) {
 	}
 }
 
-// A bare "@name" with no slash cannot be an npm package — npm requires
-// @scope/name — so it is necessarily provided by a bundler plugin.
+// A bare "@name" with no slash cannot be an npm package - npm requires
+// @scope/name - so it is necessarily provided by a bundler plugin.
 func TestBareAtPrefixIsVirtual(t *testing.T) {
 	root := hrepo(t, map[string]string{"a.ts": ""})
 	r := resolver(t, root)

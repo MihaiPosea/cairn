@@ -17,7 +17,7 @@ import (
 // file stands on. Up is what stands on it.
 //
 // Editors solved down thirty years ago. Cmd-click a name and you are in the
-// file it came from — one hop, instantly, every editor. Nothing solved up.
+// file it came from - one hop, instantly, every editor. Nothing solved up.
 // Find-references is symbol-level and noisy; it cannot say "eleven files need
 // this one, and fifty-five more need those", and it certainly cannot do it two
 // levels out.
@@ -35,7 +35,7 @@ type Ladder struct {
 	// Verdict is the one sentence a reader wants: how much care this file
 	// deserves, and why.
 	Verdict string `json:"verdict"`
-	// Reach is everything above, transitively — the honest blast radius.
+	// Reach is everything above, transitively - the honest blast radius.
 	Reach int `json:"reach"`
 	// Depends is everything below, transitively.
 	Depends int `json:"depends"`
@@ -46,7 +46,7 @@ type Ladder struct {
 	// Entry marks a file the outside world enters through, which has nothing
 	// above it by design rather than by neglect.
 	Entry bool `json:"entry,omitempty"`
-	// Orphan marks a file with nothing above it that is not an entry point —
+	// Orphan marks a file with nothing above it that is not an entry point -
 	// a different fact wearing the same shape.
 	Orphan bool `json:"orphan,omitempty"`
 }
@@ -111,7 +111,7 @@ func BuildLadder(res *scan.Result, mm *modules.Map, file string) (*Ladder, error
 
 // rungs walks two hops, keeping each file on the nearest rung it appears on.
 // A file that is both a direct neighbour and reachable in two hops belongs on
-// rung one — the shorter path is the one that describes the relationship.
+// rung one - the shorter path is the one that describes the relationship.
 func rungs(g *graph.Graph, mm *modules.Map, start string, next func(string) []string) []Level {
 	seen := map[string]bool{start: true}
 	cur := []string{start}
@@ -186,7 +186,7 @@ func tos(es []graph.Edge) []string {
 // This is the point of the whole view. The numbers are only useful once
 // somebody has told you what they mean, and "eleven files import this" means
 // something different in a repository of forty files than in one of nine
-// thousand — which is why this reads the share of the repository above the
+// thousand - which is why this reads the share of the repository above the
 // file, not the count. An absolute threshold called a file merely load-bearing
 // when thirty things stood on it, in a repository that only had thirty-two.
 //
@@ -202,7 +202,7 @@ func verdict(l *Ladder) string {
 	switch {
 	case l.Entry && up1 == 0:
 		return "An entry point. Nothing imports it because it is where the outside world comes " +
-			"in — you can change how it works, but not what it is called or where it lives."
+			"in - you can change how it works, but not what it is called or where it lives."
 	case l.Orphan:
 		return "Nothing imports this file. Either it is reached in a way no static tool can see, " +
 			"or it is no longer part of the program."
@@ -212,7 +212,7 @@ func verdict(l *Ladder) string {
 	case (l.Share >= 0.05 && l.Reach >= 5) || l.Reach >= 40:
 		return "Load-bearing. Enough depends on this that a change wants a reason and a test."
 	case up1 <= 2 && l.Depends <= 5:
-		return "A leaf. Little stands on it and it stands on little — the cheapest kind of file " +
+		return "A leaf. Little stands on it and it stands on little - the cheapest kind of file " +
 			"to change."
 	default:
 		return "Ordinary. A handful of files either side; change it with normal care."

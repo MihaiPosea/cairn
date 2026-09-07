@@ -183,7 +183,7 @@ func cycleFindings(before, after *scan.Result) []Finding {
 	// A cycle that disappeared because a bigger one swallowed it has not been
 	// broken, and saying so would be the tool lying in the reassuring
 	// direction. One added import to vue merged three separate loops of 14, 13
-	// and 62 files into a single loop of 104 — reported naively that is one
+	// and 62 files into a single loop of 104 - reported naively that is one
 	// regression and three improvements, which reads as a wash.
 	absorbedBy := map[string][]string{}
 	for k, files := range b {
@@ -212,7 +212,7 @@ func cycleFindings(before, after *scan.Result) []Finding {
 				was += len(b[bk])
 			}
 			detail = fmt.Sprintf("%d files now import each other in a loop. It swallowed %d "+
-				"smaller cycle%s covering %d files, which were separate before — so this is one "+
+				"smaller cycle%s covering %d files, which were separate before - so this is one "+
 				"loop where there were %d", len(files), n, plural(n), was, n)
 		}
 		out = append(out, Finding{
@@ -312,7 +312,7 @@ func couplingFindings(before, after *modules.Map) []Finding {
 		out = append(out, Finding{
 			Severity: Regression, Kind: "coupling-added",
 			Title: label(e.From) + " now depends on " + label(e.To),
-			Detail: fmt.Sprintf("%d imports where there were none — two parts that were "+
+			Detail: fmt.Sprintf("%d imports where there were none - two parts that were "+
 				"independent no longer are", e.Count),
 		})
 	}
@@ -355,7 +355,7 @@ func reachFindings(before, after *scan.Result) []Finding {
 		Severity: Regression, Kind: "stranded",
 		Title: fmt.Sprintf("%d file%s nothing reaches any more", len(stranded), plural(len(stranded))),
 		Detail: "these were reachable from an entry point before and are not now. They are " +
-			"still on disk, so nothing fails — they have just stopped being part of the program",
+			"still on disk, so nothing fails - they have just stopped being part of the program",
 		Items: stranded,
 	}}
 }

@@ -17,7 +17,7 @@ import (
 
 // Search is text search ordered by the dependency graph.
 //
-// Every search tool in the family — grep, ack, ag, ripgrep — has spent thirty
+// Every search tool in the family - grep, ack, ag, ripgrep - has spent thirty
 // years getting faster at the same question: which files contain these bytes.
 // None of them can order the answer, because the file system does not know
 // which files matter. Hits come back in path order, which is to say in an
@@ -48,7 +48,7 @@ type Hit struct {
 	// anchor itself, 1 is a direct neighbour. -1 means unconnected.
 	Hops int `json:"hops"`
 	// Direction is "upstream" when the match is in something that imports the
-	// anchor — those break when the anchor changes — and "downstream" when the
+	// anchor - those break when the anchor changes - and "downstream" when the
 	// anchor imports it.
 	Direction string `json:"direction,omitempty"`
 	// Via is the import chain from the anchor to this file: the evidence that
@@ -169,9 +169,9 @@ func Grep(res *scan.Result, pattern string, opt SearchOptions) (*SearchResult, e
 	}
 
 	// The ordering is the whole point. Connected before unconnected, then by
-	// how few hops away, then upstream before downstream — a file that breaks
+	// how few hops away, then upstream before downstream - a file that breaks
 	// when you change the anchor is more urgent than one the anchor merely
-	// uses — and finally by path so two runs agree.
+	// uses - and finally by path so two runs agree.
 	sort.SliceStable(hits, func(i, j int) bool {
 		a, b := hits[i], hits[j]
 		ac, bc := a.Hops >= 0, b.Hops >= 0

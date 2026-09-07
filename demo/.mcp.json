@@ -7,9 +7,9 @@
         "./cmd/cairn",
         "mcp",
         "--dir",
-        "/private/tmp/claude-501/-Users-mihaiposea/150eeeb9-87b3-4868-be45-4e6f2a8fefc3/scratchpad/realrepos/vue-core"
+        "/path/to/the/repo/you/want/graphed"
       ],
-      "cwd": "/Users/mihaiposea/repos/cairn"
+      "cwd": "/path/to/your/checkout/of/cairn"
     }
   }
 }

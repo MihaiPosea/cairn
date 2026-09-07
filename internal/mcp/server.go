@@ -4,7 +4,7 @@
 // the CLI satisfies neither.
 //
 // It has to be fast enough to ask repeatedly. Every CLI invocation rebuilds the
-// graph — 0.09s on a small repository and 1.34s on nx, which is fine once and
+// graph - 0.09s on a small repository and 1.34s on nx, which is fine once and
 // useless ten times in a row while an agent is working something out. The graph
 // is scanned once here and held, so every question after the first is answered
 // from memory.
@@ -96,14 +96,14 @@ type rpcError struct {
 
 // Serve reads requests until stdin closes.
 func (s *Server) Serve() error {
-	fmt.Fprintf(s.log, "cairn: %d files, %d imports — ready\n",
+	fmt.Fprintf(s.log, "cairn: %d files, %d imports - ready\n",
 		s.res.FilesScanned, s.res.ImportsFound)
 
 	// Line-delimited frames, read and parsed one at a time.
 	//
 	// A json.Decoder over the stream cannot survive a syntax error. Its buffer
 	// still holds the bad bytes, so every later Decode fails on the same ones
-	// and the loop can never reach the next request — measured: one malformed
+	// and the loop can never reach the next request - measured: one malformed
 	// frame and the server never answered again, at 0% CPU, silently. Any
 	// client that writes a stray byte to the pipe would take the whole agent
 	// session with it.
@@ -202,7 +202,7 @@ func toolList() []any {
 		},
 		map[string]any{
 			"name": "blast",
-			"description": "Every file that transitively depends on this one — what breaks " +
+			"description": "Every file that transitively depends on this one - what breaks " +
 				"if you change it.",
 			"inputSchema": file,
 		},
@@ -221,7 +221,7 @@ func toolList() []any {
 		},
 		map[string]any{
 			"name": "scope",
-			"description": "The only files that could be involved with this one — the set a " +
+			"description": "The only files that could be involved with this one - the set a " +
 				"search can be restricted to instead of searching the whole repository.",
 			"inputSchema": file,
 		},
@@ -234,7 +234,7 @@ func toolList() []any {
 				"type": "object",
 				"properties": map[string]any{
 					"pattern": str("regular expression"),
-					"from":    str("anchor file — results are ordered by distance from it"),
+					"from":    str("anchor file - results are ordered by distance from it"),
 				},
 				"required": []string{"pattern"},
 			},
@@ -296,10 +296,10 @@ func (s *Server) call(name string, raw json.RawMessage) (string, error) {
 			return "", err
 		}
 		var b strings.Builder
-		fmt.Fprintf(&b, "%s — %d files depend on it\nread these %d files (~%d tokens):\n",
+		fmt.Fprintf(&b, "%s - %d files depend on it\nread these %d files (~%d tokens):\n",
 			c.Target, c.Blast, len(c.Read), c.Tokens)
 		for _, f := range c.Read {
-			fmt.Fprintf(&b, "  %s — %s\n", f.Path, f.Why)
+			fmt.Fprintf(&b, "  %s - %s\n", f.Path, f.Why)
 		}
 		if c.Omitted > 0 {
 			fmt.Fprintf(&b, "%d more related files did not fit the budget.\n", c.Omitted)
@@ -345,20 +345,20 @@ func (s *Server) call(name string, raw json.RawMessage) (string, error) {
 func renderLadder(l *agent.Ladder) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", l.File)
-	fmt.Fprintf(&b, "  %4d  two levels up — need the things that need this\n", l.Up[1].Count)
-	fmt.Fprintf(&b, "  %4d  one level up — need this directly\n", l.Up[0].Count)
+	fmt.Fprintf(&b, "  %4d  two levels up - need the things that need this\n", l.Up[1].Count)
+	fmt.Fprintf(&b, "  %4d  one level up - need this directly\n", l.Up[0].Count)
 	for _, f := range firstN(l.Up[0].Files, 5) {
 		fmt.Fprintf(&b, "          %s\n", f)
 	}
 	fmt.Fprintf(&b, "     ●  %s\n", l.File)
-	fmt.Fprintf(&b, "  %4d  one level down — what it stands on\n", l.Down[0].Count)
+	fmt.Fprintf(&b, "  %4d  one level down - what it stands on\n", l.Down[0].Count)
 	for _, f := range firstN(l.Down[0].Files, 5) {
 		fmt.Fprintf(&b, "          %s\n", f)
 	}
 	fmt.Fprintf(&b, "  %4d  two levels down\n\n", l.Down[1].Count)
 	fmt.Fprintf(&b, "%s\n%d files above it, %d below", l.Verdict, l.Reach, l.Depends)
 	if l.Share >= 0.02 {
-		fmt.Fprintf(&b, " — %.0f%% of the repository", l.Share*100)
+		fmt.Fprintf(&b, " - %.0f%% of the repository", l.Share*100)
 	}
 	return b.String() + "."
 }
@@ -383,7 +383,7 @@ func renderSearch(r *agent.SearchResult) string {
 		case h.Hops == 0:
 			tag = "  [the file itself]"
 		case h.Hops > 0 && h.Direction == "upstream":
-			tag = fmt.Sprintf("  [%d up — breaks if you change it]", h.Hops)
+			tag = fmt.Sprintf("  [%d up - breaks if you change it]", h.Hops)
 		case h.Hops > 0:
 			tag = fmt.Sprintf("  [%d down]", h.Hops)
 		case h.Hops < 0:

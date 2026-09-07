@@ -33,7 +33,7 @@ func build(t *testing.T, files map[string]string) *scan.Result {
 // everything after it would be parsed as HTML.
 //
 // Go's encoding/json escapes <, > and & by default, which is what stops this.
-// That is easy to lose — someone reaching for a json.Encoder with
+// That is easy to lose - someone reaching for a json.Encoder with
 // SetEscapeHTML(false) to make the output prettier would reopen it silently.
 // This test is the tripwire.
 func TestPayloadCannotBreakOutOfTheScriptTag(t *testing.T) {
@@ -52,7 +52,7 @@ import b from "./</script>";
 	// The only </script> in the document must be the one that closes our own
 	// script block. Any other means content escaped the JSON.
 	if n := strings.Count(strings.ToLower(html), "</script>"); n != 1 {
-		t.Fatalf("found %d </script> occurrences, want exactly 1 — content escaped the payload", n)
+		t.Fatalf("found %d </script> occurrences, want exactly 1 - content escaped the payload", n)
 	}
 	if strings.Contains(html, "<img src=x onerror=alert(1)>") {
 		t.Error("raw markup from a filename or specifier reached the document unescaped")
@@ -121,14 +121,14 @@ func TestDepthIncreasesAlongAChain(t *testing.T) {
 	}
 }
 
-// Longest-path depth on a real repo reaches into the hundreds — excalidraw hit
-// 648 — because it measures the longest chain that can be strung together, not
+// Longest-path depth on a real repo reaches into the hundreds - excalidraw hit
+// 648 - because it measures the longest chain that can be strung together, not
 // how deep anything is. Those numbers head the columns in the viewer, so they
 // have to be ranks: consecutive from zero, with no empty levels between.
 func TestDepthsAreConsecutiveRanks(t *testing.T) {
 	// A diamond with one long side. b is reachable in one hop and in three,
 	// so longest path puts it at 3 with levels 1 and 2 left holding nothing
-	// on that branch — exactly the gap ranking has to close.
+	// on that branch - exactly the gap ranking has to close.
 	res := build(t, map[string]string{
 		"app/page.tsx": `import "./x"; import "./a";`,
 		"app/a.ts":     `import "./b";`,
@@ -151,13 +151,13 @@ func TestDepthsAreConsecutiveRanks(t *testing.T) {
 		}
 	}
 	if maxDepth >= len(seen) {
-		t.Errorf("max depth %d with only %d distinct levels — depths are not ranks", maxDepth, len(seen))
+		t.Errorf("max depth %d with only %d distinct levels - depths are not ranks", maxDepth, len(seen))
 	}
 }
 
 // The page scopes everything it draws by module. An edge endpoint missing from
 // ModuleOf resolves to nothing, and the page drops that edge without saying
-// so — which is the failure the whole module layer exists to prevent.
+// so - which is the failure the whole module layer exists to prevent.
 func TestEveryDrawnNodeHasAModule(t *testing.T) {
 	res := build(t, map[string]string{
 		"packages/ui/index.ts":   `import "../core/index"; export const a = 1;`,

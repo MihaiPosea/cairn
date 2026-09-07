@@ -3,11 +3,11 @@
 
 Question: list every file that breaks if I change X.
 
-Route A — grep, done properly. BFS outward: grep the basename, read each hit,
+Route A - grep, done properly. BFS outward: grep the basename, read each hit,
 keep the ones whose import actually resolves back to the file, recurse on
 those. This is what a careful agent does, and every byte it reads is counted.
 
-Route B — one cairn call.
+Route B - one cairn call.
 
 Ground truth is cairn's graph, which is separately checked against the
 TypeScript compiler, so route A is scored against a verified answer.

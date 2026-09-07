@@ -17,7 +17,7 @@ import (
 	"github.com/MihaiPosea/cairn/internal/scan"
 )
 
-const usage = `cairn — see what your project actually depends on
+const usage = `cairn - see what your project actually depends on
 
 usage:
   cairn scan [dir]              build the graph and summarise it
@@ -34,7 +34,7 @@ usage:
   cairn grep <pat> --from <f>   search, ordered by what is connected to <f>
   cairn drift --base main       what this change did to the architecture
   cairn context <file>          what to read before changing this file
-  cairn scope <file>            the files a search must cover — pipe into grep
+  cairn scope <file>            the files a search must cover - pipe into grep
   cairn affected [--base ref]   what needs re-running after your changes
 
 flags:
@@ -90,7 +90,7 @@ func run(args []string) error {
 	sizes := fs.Bool("sizes", false, "measure installed package sizes")
 	addr := fs.String("addr", "localhost:7777", "address for `cairn serve`")
 	withPkgs := fs.Bool("packages", false, "include packages in the graph view")
-	from := fs.String("from", "", "anchor file for `cairn grep` — results are ordered by distance from it")
+	from := fs.String("from", "", "anchor file for `cairn grep` - results are ordered by distance from it")
 	connected := fs.Bool("connected", false, "`cairn grep`: drop matches the graph cannot connect to --from")
 	ignoreCase := fs.Bool("i", false, "case-insensitive search")
 	budget := fs.Int("budget", 0, "token budget for `cairn context`")
@@ -120,7 +120,7 @@ func run(args []string) error {
 
 	needsArg := func() (string, error) {
 		if len(rest) == 0 {
-			return "", fmt.Errorf("%s needs an argument — see `cairn help`", cmd)
+			return "", fmt.Errorf("%s needs an argument - see `cairn help`", cmd)
 		}
 		return rest[0], nil
 	}
@@ -242,7 +242,7 @@ func run(args []string) error {
 		})
 
 	default:
-		return fmt.Errorf("unknown command %q — run `cairn help`", cmd)
+		return fmt.Errorf("unknown command %q - run `cairn help`", cmd)
 	}
 }
 

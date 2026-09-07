@@ -27,7 +27,7 @@ func TestFileAsRootIsAnError(t *testing.T) {
 	}
 }
 
-// An empty but valid directory is not an error — a repo can have no JS.
+// An empty but valid directory is not an error - a repo can have no JS.
 func TestEmptyDirectoryScansCleanly(t *testing.T) {
 	res, err := Run(t.TempDir())
 	if err != nil {

@@ -7,7 +7,7 @@ function that had been deleted, a six-pixel drag threshold that ate ordinary
 trackpad clicks, a find-and-replace that corrupted the file.
 
 `viewer_smoke.py` runs the page's own functions under node against a real
-exported graph — no browser, no server — and asserts on what it computes:
+exported graph - no browser, no server - and asserts on what it computes:
 
 - edge conservation: the five buckets sum to the edge total, so nothing is
   silently dropped

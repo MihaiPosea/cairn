@@ -29,7 +29,7 @@ export const app = core;`,
 		t.Fatal(err)
 	}
 	for _, u := range res.Unresolved {
-		t.Errorf("unresolved %s:%d %q — %s", u.File, u.Line, u.Specifier, u.Reason)
+		t.Errorf("unresolved %s:%d %q - %s", u.File, u.Line, u.Specifier, u.Reason)
 	}
 	if res.Graph.EdgeCount() == 0 {
 		t.Error("a project-references monorepo produced no edges")

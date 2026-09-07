@@ -45,10 +45,10 @@ Prints: startup ms, tool names, blast1/blast2 timing + ~token estimate (`len(tex
 Copy `.mcp.json` into the project (or merge into your Claude MCP config).
 Replace:
 
-- `REPLACE_WITH_TARGET_REPO_PATH` — repo cairn should index
-- `REPLACE_WITH_CAIRN_REPO_ROOT` — absolute path to this cairn clone (cwd for `go run`)
+- `REPLACE_WITH_TARGET_REPO_PATH` - repo cairn should index
+- `REPLACE_WITH_CAIRN_REPO_ROOT` - absolute path to this cairn clone (cwd for `go run`)
 
 ## Artifacts
 
-- `VERIFICATION_REPORT.md` — independent verify summary
-- `compare_results.json` — raw compare numbers (keep as-is)
+- `VERIFICATION_REPORT.md` - independent verify summary
+- `compare_results.json` - raw compare numbers (keep as-is)

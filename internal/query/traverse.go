@@ -1,7 +1,7 @@
 // Package query answers questions about a built graph.
 //
-// Everything here is a traversal. The value is not the algorithms — they are
-// textbook — it is being careful about which edges count for which question.
+// Everything here is a traversal. The value is not the algorithms - they are
+// textbook - it is being careful about which edges count for which question.
 // A type-only import breaks a compile but not a runtime; a dynamic import keeps
 // a file alive but cannot be followed statically. Getting those distinctions
 // wrong is how a tool tells you to delete a file you need.
@@ -22,7 +22,7 @@ func AllEdges(graph.Edge) bool { return true }
 // RuntimeOnly skips imports that vanish when the code compiles.
 //
 // Use it for questions about what actually ships. Do not use it for "is this
-// file dead" — a file that only anything imports for its types is still needed
+// file dead" - a file that only anything imports for its types is still needed
 // to compile, and deleting it breaks the build.
 func RuntimeOnly(e graph.Edge) bool { return e.Kind != graph.TypeOnly }
 
@@ -91,7 +91,7 @@ func ReachableFrom(g *graph.Graph, target string, follow EdgeFilter) map[string]
 // ShortestPath returns the shortest chain of node IDs from any of roots to
 // target, or nil if there is none.
 //
-// This is what answers "why is this package here" — and the answer has to be a
+// This is what answers "why is this package here" - and the answer has to be a
 // path, not a yes. "You depend on left-pad" is useless; "app/page.tsx imports
 // a, which requires b, which requires left-pad" is actionable.
 func ShortestPath(g *graph.Graph, roots []string, target string, follow EdgeFilter) []string {

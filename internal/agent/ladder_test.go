@@ -124,7 +124,7 @@ func TestALeafIsNamedAsOne(t *testing.T) {
 	})
 	l := ladder(t, res, "leaf.ts")
 	if !strings.Contains(l.Verdict, "leaf") {
-		t.Errorf("one importer, nothing below — expected a leaf verdict, got %q", l.Verdict)
+		t.Errorf("one importer, nothing below - expected a leaf verdict, got %q", l.Verdict)
 	}
 }
 

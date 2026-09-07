@@ -7,8 +7,8 @@ import (
 
 // `cairn export graph.html --dir ~/repo` exported the current directory
 // instead of ~/repo, because Go's flag package stops parsing at the first
-// non-flag argument. It failed silently — nine repositories produced the same
-// 40,547 bytes — which is the worst way for a flag to fail.
+// non-flag argument. It failed silently - nine repositories produced the same
+// 40,547 bytes - which is the worst way for a flag to fail.
 func TestFlagsAreAcceptedAfterPositionalArguments(t *testing.T) {
 	takesValue := map[string]bool{"dir": true, "addr": true, "base": true}
 

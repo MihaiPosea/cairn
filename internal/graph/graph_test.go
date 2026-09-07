@@ -157,7 +157,7 @@ func TestStatsCountsByKind(t *testing.T) {
 	}
 }
 
-// AddNode must be idempotent — the same file is reached from many places.
+// AddNode must be idempotent - the same file is reached from many places.
 func TestAddNodeIsIdempotent(t *testing.T) {
 	g := New()
 	a := g.AddNode(&Node{ID: NodeID(File, "a.ts"), Kind: File, Path: "a.ts"})

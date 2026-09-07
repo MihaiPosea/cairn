@@ -18,7 +18,7 @@ import (
 // deleting the entire codebase.
 //
 // Paths are returned repo-relative and slash-separated. They may not exist on
-// disk — a manifest often points at a build output — so callers must check.
+// disk - a manifest often points at a build output - so callers must check.
 func ManifestEntries(root string) []string {
 	data, err := os.ReadFile(filepath.Join(root, "package.json"))
 	if err != nil {

@@ -3,7 +3,7 @@
 // The cache is keyed by the SHA-256 of a file's contents, never by
 // modification time. mtime changes on a fresh checkout, a touch, or a clock
 // skew without the file changing, and does not change when a file is restored
-// from a backup — it is wrong in both directions. Content hashing costs one
+// from a backup - it is wrong in both directions. Content hashing costs one
 // read, and the read has to happen anyway.
 package index
 
@@ -21,7 +21,7 @@ import (
 // formatVersion is bumped whenever the parser's output shape changes.
 //
 // Without it, upgrading cairn would silently serve parse results produced by
-// the old parser — a stale cache that looks exactly like a correct one. On a
+// the old parser - a stale cache that looks exactly like a correct one. On a
 // mismatch the whole cache is discarded, which costs one slow scan and is the
 // only safe answer.
 // Bumped to 2 when the parser learned `import x = require("y")` and stopped
@@ -122,7 +122,7 @@ func (ix *Index) Len() int {
 // Save writes the cache back to disk.
 //
 // Writes to a temporary file and renames it into place, because rename is
-// atomic and a half-written cache is a permanent, silent corruption — the
+// atomic and a half-written cache is a permanent, silent corruption - the
 // worst failure this package could have.
 //
 // Entries for files that no longer exist are kept: they cost a few hundred

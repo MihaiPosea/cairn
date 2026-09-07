@@ -171,7 +171,7 @@ func printSummary(res *scan.Result) {
 
 	if n := len(res.Unanalyzable); n > 0 {
 		fmt.Printf("\n  %-22s %d\n", "computed imports", n)
-		fmt.Println("      import() with a path built at runtime — cairn cannot follow these,")
+		fmt.Println("      import() with a path built at runtime - cairn cannot follow these,")
 		fmt.Println("      so dead-file results in this repo are reported with lower confidence")
 		for i, u := range res.Unanalyzable {
 			if i == 5 {
@@ -211,7 +211,7 @@ func printPackages(res *scan.Result) {
 	}
 	if n := len(res.Join.UnusedDeclared); n > 0 {
 		fmt.Printf("\n  declared but never imported  (%d)\n", n)
-		fmt.Println("      a hint, not proof — config files and plugins load packages by name")
+		fmt.Println("      a hint, not proof - config files and plugins load packages by name")
 		for i, name := range res.Join.UnusedDeclared {
 			if i == 8 {
 				fmt.Printf("      … and %d more\n", n-8)
@@ -243,7 +243,7 @@ func runBlast(res *scan.Result, target string, asJSON bool) error {
 	fmt.Printf("%s\n\n", short(id))
 	if len(b.Affected) == 0 {
 		fmt.Println("  nothing imports this file")
-		fmt.Println("  changing it is safe — or it is dead. try `cairn dead`.")
+		fmt.Println("  changing it is safe - or it is dead. try `cairn dead`.")
 		return nil
 	}
 	verb := "depend"
@@ -316,7 +316,7 @@ func runDead(res *scan.Result, asJSON bool) error {
 		fmt.Printf("      %s\n", short(d.File))
 	}
 	fmt.Printf("\n  %s\n", dead[0].Why)
-	fmt.Println("  check before deleting — a file loaded by name at runtime looks identical to a dead one")
+	fmt.Println("  check before deleting - a file loaded by name at runtime looks identical to a dead one")
 	return nil
 }
 
@@ -351,7 +351,7 @@ func runWhy(res *scan.Result, pkg string, asJSON bool) error {
 	case w.Direct:
 		fmt.Printf("%s is imported directly by your code.\n\n", pkg)
 	case w.From == "package.json":
-		fmt.Printf("%s arrives through %s. Nothing in your code imports it —\n", pkg, plural(len(w.Path)-1, "hop"))
+		fmt.Printf("%s arrives through %s. Nothing in your code imports it -\n", pkg, plural(len(w.Path)-1, "hop"))
 		fmt.Printf("it comes in behind a package you declared.\n\n")
 	default:
 		fmt.Printf("%s arrives through %s.\n\n", pkg, plural(len(w.Path)-1, "hop"))
@@ -556,7 +556,7 @@ func runVerify(root string, asJSON bool) error {
 				fmt.Printf("      … and %d more\n", n-4)
 				break
 			}
-			fmt.Printf("      %s  %q — %s\n", d.File, d.Specifier, d.Class)
+			fmt.Printf("      %s  %q - %s\n", d.File, d.Specifier, d.Class)
 		}
 	}
 	return nil
@@ -581,7 +581,7 @@ func exportGraph(res *scan.Result, path string, withPackages bool) error {
 	}
 	describeView(p)
 	fmt.Printf("\nwrote %s (%s)\n", path, humanBytes(info.Size()))
-	fmt.Println("one file, no server, no dependencies — send it to anyone")
+	fmt.Println("one file, no server, no dependencies - send it to anyone")
 	return nil
 }
 
@@ -699,7 +699,7 @@ func runContext(res *scan.Result, target string, budget int, asJSON bool) error 
 			total++
 		}
 	}
-	fmt.Printf("\nsearch scope: %d of %d files — narrow grep to these\n", len(c.Scope), total)
+	fmt.Printf("\nsearch scope: %d of %d files - narrow grep to these\n", len(c.Scope), total)
 	fmt.Printf("  cairn scope %s | xargs rg <pattern>\n", c.Target)
 	if c.Warning != "" {
 		fmt.Printf("\nnote: %s\n", c.Warning)
@@ -829,7 +829,7 @@ func runGrep(res *scan.Result, pattern, anchor string, connected, ignoreCase boo
 		// below it, files that merely share a word.
 		if h.Hops < 0 && shown != "unrelated" {
 			shown = "unrelated"
-			fmt.Printf("\n— not connected to %s —\n\n", anchor)
+			fmt.Printf("\nnot connected to %s\n\n", anchor)
 		} else if h.Hops >= 0 && shown == "" {
 			shown = "connected"
 		}
@@ -838,9 +838,9 @@ func runGrep(res *scan.Result, pattern, anchor string, connected, ignoreCase boo
 		case h.Hops == 0:
 			tag = "the file itself"
 		case h.Hops > 0 && h.Direction == "upstream":
-			tag = plural(h.Hops, "hop") + " up — breaks if you change it"
+			tag = plural(h.Hops, "hop") + " up - breaks if you change it"
 		case h.Hops > 0:
-			tag = plural(h.Hops, "hop") + " down — the target uses it"
+			tag = plural(h.Hops, "hop") + " down - the target uses it"
 		}
 		fmt.Printf("%s:%d  %s\n", h.Path, h.Line, tag)
 		fmt.Printf("    %s\n", h.Text)
@@ -892,11 +892,11 @@ func runLadder(res *scan.Result, file string, asJSON bool) error {
 
 	// Up first, printed above the file, because that is where it sits: the
 	// things standing on it are drawn over it, the things it stands on below.
-	rung(l.Up[1], "▲▲", "two levels up — who needs the things that need this")
-	rung(l.Up[0], "▲", "one level up — who needs this directly")
+	rung(l.Up[1], "▲▲", "two levels up - who needs the things that need this")
+	rung(l.Up[0], "▲", "one level up - who needs this directly")
 	fmt.Printf("\n  ●         %s\n\n", file)
-	rung(l.Down[0], "▼", "one level down — what this stands on")
-	rung(l.Down[1], "▼▼", "two levels down — what those stand on")
+	rung(l.Down[0], "▼", "one level down - what this stands on")
+	rung(l.Down[1], "▼▼", "two levels down - what those stand on")
 
 	fmt.Printf("\n  %s\n", l.Verdict)
 	fmt.Printf("  %d files above it in total, %d below.\n\n", l.Reach, l.Depends)

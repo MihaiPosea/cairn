@@ -27,8 +27,8 @@ type Workspace struct {
 // three-package fixture: three nodes, zero edges. That is worse than an error,
 // because it looks like a working answer.
 //
-// Both conventions are read — npm/yarn/bun put a "workspaces" array in
-// package.json, pnpm uses pnpm-workspace.yaml — because a repo may have either.
+// Both conventions are read - npm/yarn/bun put a "workspaces" array in
+// package.json, pnpm uses pnpm-workspace.yaml - because a repo may have either.
 func findWorkspaces(root string) map[string]*Workspace {
 	out := map[string]*Workspace{}
 
@@ -170,16 +170,16 @@ func readWorkspace(dir string) *Workspace {
 // Two things make this delicate, and getting either wrong is silent.
 //
 // The map has two shapes at different depths. The outer one is keyed by
-// subpath — ".", "./styles", "./package.json" — and only "." is the package's
-// main entry. The inner ones are keyed by condition — "import", "require",
+// subpath - ".", "./styles", "./package.json" - and only "." is the package's
+// main entry. The inner ones are keyed by condition - "import", "require",
 // "types". Treating a subpath map as a condition map is how a package ends up
 // resolving to its own package.json, since almost every modern manifest
 // publishes "./package.json": "./package.json" and it is just another key.
 //
 // And the fallback must not iterate a Go map. Map order is randomised per run,
 // so a manifest whose keys miss the preferred list resolves differently on
-// different runs of the same scan. Measured on tanstack-query: 319 edges — a
-// twelfth of the graph — flipped between two runs of an unchanged repository,
+// different runs of the same scan. Measured on tanstack-query: 319 edges - a
+// twelfth of the graph - flipped between two runs of an unchanged repository,
 // every one of them a workspace import landing on package.json half the time
 // and on src/index.ts the other half.
 func exportsSource(raw json.RawMessage) string {

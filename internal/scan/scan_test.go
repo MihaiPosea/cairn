@@ -32,7 +32,7 @@ export default function Page() { return <Button />; }`,
 		"lib/types.ts":          `export type Config = { a: number };`,
 		"lib/orphan.ts":         `export const nobody = 1;`,
 
-		// installed packages, no lockfile — exercises the node_modules fallback
+		// installed packages, no lockfile - exercises the node_modules fallback
 		"node_modules/react/package.json":      `{"name":"react","version":"19.0.0","dependencies":{"scheduler":"^0.25.0"}}`,
 		"node_modules/scheduler/package.json":  `{"name":"scheduler","version":"0.25.0"}`,
 		"node_modules/unused-dep/package.json": `{"name":"unused-dep","version":"1.0.0"}`,
@@ -231,7 +231,7 @@ func TestEditInvalidatesOnlyThatFile(t *testing.T) {
 // silently loses real code, and silently is the operative word: a directory
 // that is never descended into leaves no trace in any count or warning.
 //
-// Found by sweeping 34 repositories — astro keeps a hundred lines of
+// Found by sweeping 34 repositories - astro keeps a hundred lines of
 // hand-written TypeScript in packages/astro/src/core/build/, and every one of
 // them was invisible.
 func TestSourceDirectoriesNamedLikeOutputAreStillScanned(t *testing.T) {

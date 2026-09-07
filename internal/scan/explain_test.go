@@ -27,7 +27,7 @@ func TestClusterGroupsByRealCause(t *testing.T) {
 	}
 	var dist int
 	for _, c := range clusters {
-		if c.Category == "build output with no source equivalent — run the repo's build" {
+		if c.Category == "build output with no source equivalent - run the repo's build" {
 			dist += c.Count
 		}
 	}
@@ -72,19 +72,19 @@ func TestFixturesAndTemplatesAreNamedForWhatTheyAre(t *testing.T) {
 	}{
 		{"svelte compiler fixture",
 			"packages/svelte/tests/compiler-errors/samples/x/main.svelte", "./Component.svelte",
-			"test fixtures — these imports are meant to fail"},
+			"test fixtures - these imports are meant to fail"},
 		{"codemod fixture",
 			"packages/codemods/src/__testfixtures__/a.input.tsx", "../another/module",
-			"test fixtures — these imports are meant to fail"},
+			"test fixtures - these imports are meant to fail"},
 		{"scaffolding template",
 			"cli/template/extras/src/app/page.tsx", "./index.module.css",
-			"scaffolding templates — the files appear when the template is used"},
+			"scaffolding templates - the files appear when the template is used"},
 		{"next codegen",
 			"apps/web/next-env.d.ts", "./.next/types/routes.d.ts",
-			"codegen output — written by a framework or generator, not committed"},
+			"codegen output - written by a framework or generator, not committed"},
 		{"prisma codegen",
 			"src/db.ts", "../generated/client",
-			"codegen output — written by a framework or generator, not committed"},
+			"codegen output - written by a framework or generator, not committed"},
 		{"native binary",
 			"src/native/bindings.js", "./nx.win32-x64-msvc.node",
 			"native binaries for other platforms"},

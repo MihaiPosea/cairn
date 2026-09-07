@@ -4,7 +4,7 @@
 // This is the hard part of the whole project. "./utils" might mean utils.ts,
 // utils/index.tsx, or nothing. "@/lib/x" depends on a tsconfig alias. "react"
 // is a package. "node:fs" is neither. Every ecosystem gets this wrong
-// differently and there is no shortcut — only rules, applied in the right
+// differently and there is no shortcut - only rules, applied in the right
 // order, with the failures counted honestly.
 package resolve
 
@@ -96,12 +96,12 @@ type Result struct {
 // Order matters twice over. TypeScript comes before JavaScript, because a repo
 // mid-migration often has both utils.ts and a stale utils.js, and the compiler
 // prefers .ts. And declaration files come last, because a .d.ts describes an
-// implementation that may also be present — if utils.ts exists, that is the
+// implementation that may also be present - if utils.ts exists, that is the
 // file you want.
 //
 // Declaration files must be here at all, though. A repo importing "./utils"
-// where only utils.d.ts exists is entirely normal — ambient typings, generated
-// declarations, .d.ts-only test suites — and leaving them out accounted for
+// where only utils.d.ts exists is entirely normal - ambient typings, generated
+// declarations, .d.ts-only test suites - and leaving them out accounted for
 // most of what was still unresolved across Astro, Nx, Vue and TanStack Query.
 var extensionLadder = []string{
 	".ts", ".tsx", ".mts", ".cts",
@@ -112,8 +112,8 @@ var extensionLadder = []string{
 // buildToSource maps a build-output directory name onto the source directories
 // it is usually compiled from.
 //
-// A monorepo package routinely imports its own compiled output —
-// "../../../dist/core/errors/index.js" — which does not exist until the repo is
+// A monorepo package routinely imports its own compiled output -
+// "../../../dist/core/errors/index.js" - which does not exist until the repo is
 // built. In the Astro repo that was 917 imports, 98% of everything unresolved.
 //
 // The compiled file is a build of a source file that *is* present, and for a
@@ -176,7 +176,7 @@ var platformSuffixes = []string{".native", ".ios", ".android", ".web", ".macos",
 // jsToTS maps a JavaScript extension to the TypeScript ones that can produce it.
 //
 // In ESM TypeScript you must write `import "./x.js"` even though the file on
-// disk is x.ts — the specifier describes the output, not the source. Miss this
+// disk is x.ts - the specifier describes the output, not the source. Miss this
 // and every ESM-strict TypeScript repo looks broken.
 var jsToTS = map[string][]string{
 	".js":  {".ts", ".tsx", ".d.ts"},
@@ -252,11 +252,11 @@ func New(root string) (*Resolver, error) {
 		workspaces: findWorkspaces(abs),
 	}
 	r.rootAliases = compileAliases(cfg.Rules)
-	// A broken tsconfig is reported but not fatal — we simply have no aliases.
+	// A broken tsconfig is reported but not fatal - we simply have no aliases.
 	return r, cfgErr
 }
 
-// AddAliases registers path aliases discovered outside tsconfig — typically
+// AddAliases registers path aliases discovered outside tsconfig - typically
 // from a bundler config.
 //
 // They are appended to the root alias set and re-sorted, so the same
@@ -357,11 +357,11 @@ func (r *Resolver) HasAliases() bool { return len(r.rootAliases) > 0 }
 //
 // The rules are applied in this order, and the order is the design:
 //
-//  1. explicit node: prefix        — unambiguous, cheap, check first
-//  2. relative or absolute path    — the common case
-//  3. tsconfig path alias          — looks bare but is really a path
-//  4. bare node builtin            — "fs" with no prefix
-//  5. bare specifier               — a package
+//  1. explicit node: prefix        - unambiguous, cheap, check first
+//  2. relative or absolute path    - the common case
+//  3. tsconfig path alias          - looks bare but is really a path
+//  4. bare node builtin            - "fs" with no prefix
+//  5. bare specifier               - a package
 //
 // Aliases must be tried before treating something as a package, or "@/lib/x"
 // in a Next.js repo becomes a phantom dependency on a package named "@".
@@ -405,7 +405,7 @@ func (r *Resolver) Resolve(fromFile, specifier string) Result {
 	// the kind of noise that makes someone close the tool.
 	//
 	// A scheme is recognised structurally rather than by keeping a list of
-	// frameworks — "word:" is simply not a file path — so a framework invented
+	// frameworks - "word:" is simply not a file path - so a framework invented
 	// next year is handled without a change here.
 	if name, ok := virtualModule(specifier); ok {
 		return Result{Kind: ToVirtual, Name: name, Via: "virtual"}
@@ -413,7 +413,7 @@ func (r *Resolver) Resolve(fromFile, specifier string) Result {
 
 	// 1d. a glob pattern.
 	//
-	// Parcel and Vite both let a specifier match many files at once —
+	// Parcel and Vite both let a specifier match many files at once -
 	// "../intl/*.json" pulls in every locale file beside it. React Spectrum
 	// uses this heavily; treated as a single path it resolves to nothing and
 	// the dependency on all of those files is simply missing from the graph.
@@ -426,7 +426,7 @@ func (r *Resolver) Resolve(fromFile, specifier string) Result {
 	// 2. relative or absolute path
 	if strings.HasPrefix(specifier, ".") || strings.HasPrefix(specifier, "/") {
 		// A relative path that reaches into node_modules is a package import
-		// written the long way — "../../node_modules/astro/dist/transitions".
+		// written the long way - "../../node_modules/astro/dist/transitions".
 		// node_modules is never walked, so the path can never resolve to a
 		// file; naming the package is both resolvable and the truer answer.
 		if name, sub, ok := packageFromNodeModulesPath(specifier); ok {
@@ -447,7 +447,7 @@ func (r *Resolver) Resolve(fromFile, specifier string) Result {
 			// Searched from the nearest project root outward, not from the repo
 			// root. In a monorepo "/typescript.svg" imported from
 			// examples/with-vite-react/apps/web/src/main.tsx lives in that
-			// app's own public/ directory — the site root is the app, not the
+			// app's own public/ directory - the site root is the app, not the
 			// repository. Same principle as the nearest tsconfig winning.
 			for _, projectRoot := range r.projectRootsFrom(fromFile) {
 				for _, dir := range staticDirs {
@@ -500,7 +500,7 @@ func (r *Resolver) Resolve(fromFile, specifier string) Result {
 		return Result{Kind: ToVirtual, Name: specifier, Via: "virtual-at-prefix"}
 	}
 
-	// 5. a package in this monorepo — your own code, not a dependency
+	// 5. a package in this monorepo - your own code, not a dependency
 	if res, ok := r.tryWorkspace(specifier); ok {
 		return res
 	}
@@ -561,8 +561,8 @@ func (r *Resolver) tryAliases(cfg *dirConfig, specifier string) (Result, bool) {
 // path, returning a Result on success.
 //
 // Existence is checked against a cached directory listing rather than one
-// os.Stat per candidate. That is faster — the ladder tries up to nine
-// extensions per import, so a listing amortises across all of them — and,
+// os.Stat per candidate. That is faster - the ladder tries up to nine
+// extensions per import, so a listing amortises across all of them - and,
 // more importantly, it is *case-exact*, which os.Stat is not on macOS or
 // Windows.
 func (r *Resolver) tryFile(abs string) (Result, bool) {
@@ -594,7 +594,7 @@ func (r *Resolver) tryFile(abs string) (Result, bool) {
 	// Platform-qualified: ./Button -> Button.ios.tsx
 	//
 	// Tried after the plain ladder, so an unqualified file always wins when
-	// both exist — which is what a bundler does too.
+	// both exist - which is what a bundler does too.
 	for _, plat := range platformSuffixes {
 		for _, ext := range extensionLadder {
 			if res, ok := r.file(abs + plat + ext); ok {
@@ -642,7 +642,7 @@ func (r *Resolver) tryFile(abs string) (Result, bool) {
 // Segments are tried outermost first. Anchoring on the *nearest* build
 // directory seems more natural and is wrong: "dist/types/public/common.js"
 // contains two names from the table, and rewriting the inner one produces
-// "dist/src/public/common.js" — nonsense. The outer one gives
+// "dist/src/public/common.js" - nonsense. The outer one gives
 // "src/types/public/common.ts", which is the real file. That mistake accounted
 // for 92 of Astro's remaining unresolved imports.
 //
@@ -681,7 +681,7 @@ func (r *Resolver) trySourceTwin(abs string) (Result, bool) {
 		}
 
 		// Last resort: a bundle whose filename encodes the format rather than a
-		// source path — "dist/compiler-core.cjs.prod.js", built from the whole
+		// source path - "dist/compiler-core.cjs.prod.js", built from the whole
 		// of src. There is no per-file twin, but the package's own entry point
 		// is the right endpoint: the import means "this package", and that is
 		// where its code starts.
@@ -810,7 +810,7 @@ func packageFromNodeModulesPath(spec string) (name, subpath string, ok bool) {
 //
 // The validation matters more than it looks. Once a missed alias falls through
 // to here, an alias like "@/*" that pointed nowhere would otherwise invent a
-// dependency on a package named "@" — which is exactly the phantom this used to
+// dependency on a package named "@" - which is exactly the phantom this used to
 // short-circuit to avoid.
 func splitPackage(spec string) (name, subpath string) {
 	parts := strings.Split(spec, "/")

@@ -1,6 +1,6 @@
 // Package jsts extracts imports from JavaScript and TypeScript source.
 //
-// It uses gotreesitter — a pure-Go tree-sitter runtime — so cairn stays a
+// It uses gotreesitter - a pure-Go tree-sitter runtime - so cairn stays a
 // single static binary with no C toolchain, and so `go install` works for
 // anyone. Parsing with a real grammar rather than regexes matters more than it
 // looks: an import inside a comment, a string containing the word "import", and
@@ -23,7 +23,7 @@ import (
 // Extensions this parser claims.
 //
 // The single-file-component formats are here because their imports are
-// ordinary TypeScript wrapped in markup — see sfc.go. Leaving them out does not
+// ordinary TypeScript wrapped in markup - see sfc.go. Leaving them out does not
 // produce a partial answer for a Vue or Svelte app, it produces a graph with
 // the components missing entirely, which reads as a working scan of a much
 // smaller project.
@@ -90,7 +90,7 @@ func (p *Parser) load() {
 // languageFor picks a grammar by extension.
 //
 // .tsx needs the TSX grammar because TypeScript's `<T>x` type assertion and
-// JSX's `<T>` are genuinely ambiguous — tree-sitter ships two grammars for
+// JSX's `<T>` are genuinely ambiguous - tree-sitter ships two grammars for
 // exactly this reason. The JavaScript grammar already understands JSX, so .js
 // and .jsx share it.
 func (p *Parser) languageFor(path string) *ts.Language {
@@ -183,7 +183,7 @@ func (p *Parser) parseCode(path string, src []byte, lineOffset int) ([]lang.RawI
 // output, and the HTML page. Found by fuzzing in six seconds: `import "0\000"`
 // decodes an octal escape to a NUL byte.
 //
-// Such an import is not dropped — it is reported as unanalyzable, the same
+// Such an import is not dropped - it is reported as unanalyzable, the same
 // treatment a computed import() gets, because something is being imported and
 // pretending otherwise would hide it.
 func validSpecifier(s string) bool {
@@ -252,7 +252,7 @@ func sanitize(s string) string {
 // is a direct child of the export statement either way, and only the keyword
 // distinguishes a re-export from a plain exported value.
 //
-// That produced *invented* edges — worse than a missed one, because a missing
+// That produced *invented* edges - worse than a missed one, because a missing
 // edge understates the graph while a fabricated one puts a node in it that no
 // code ever mentions. Found across the Vite repository, where playground
 // fixtures export string literals by the dozen.
@@ -315,7 +315,7 @@ func fromCallExpression(n *ts.Node, l *ts.Language, src []byte) (lang.RawImport,
 		}
 		return lang.RawImport{Specifier: spec, Kind: kind, Line: line(n)}, true
 	}
-	// import(someVariable) — a real dependency we cannot name. Record it.
+	// import(someVariable) - a real dependency we cannot name. Record it.
 	return lang.RawImport{Kind: lang.Unanalyzable, Line: line(n), Expr: sanitize(first.Text(src))}, true
 }
 
@@ -333,7 +333,7 @@ func sourceString(n *ts.Node, l *ts.Language, src []byte) (string, bool) {
 //
 // tree-sitter models a string as quote / string_fragment / quote, so the
 // fragment already excludes them. But a specifier containing an escape splits
-// into several children — string_fragment, escape_sequence, string_fragment —
+// into several children - string_fragment, escape_sequence, string_fragment -
 // and returning only the first silently truncates the path. "./with\u0020space"
 // became "./with", which then fails to resolve for no visible reason.
 //

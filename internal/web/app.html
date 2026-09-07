@@ -445,14 +445,14 @@ function childIds(g) { return [...g.kidIds, ...g.leaves]; }
 //
 // Not the literal repository root. That is usually scaffolding: excalidraw's
 // is dev-docs/, examples/, public/, scripts/ and one box holding 91% of the
-// code — a tidy picture that says nothing about the program. The architecture
+// code - a tidy picture that says nothing about the program. The architecture
 // is one or two levels in, and the reader should not have to go looking for
 // it. Vue's is packages/: reactivity at the base, runtime-core and shared in
 // the middle, vue on top.
 //
 // So descend while the level is really just one box, and stop as soon as the
 // split says something. The breadcrumb still shows the whole path, so nothing
-// is hidden — it is a starting point, not a restriction.
+// is hidden - it is a starting point, not a restriction.
 function openingFocus() {
   const at = f => { const save = focus; focus = f; const k = scopeChildren(); focus = save; return k; };
   let f = [];
@@ -480,7 +480,7 @@ function openingFocus() {
 // ── scope ──────────────────────────────────────────────────────────────────
 //
 // The reader is always inside exactly one container, and only its immediate
-// children are drawn. Everything else — however much of it there is — is not
+// children are drawn. Everything else - however much of it there is - is not
 // on the screen at all.
 //
 // The previous model was an open set: folders could be expanded anywhere, and
@@ -573,7 +573,7 @@ function synthModule(m) {
 // module it belongs to.
 //
 // The scoped view answers "what is this part made of". It cannot answer "what
-// does the whole thing look like", and that picture is worth having — both to
+// does the whole thing look like", and that picture is worth having - both to
 // get a feel for a repository you have never seen and because it is the one
 // image worth showing someone. Edges stay withheld here; nine hundred boxes
 // with their lines drawn is the hairball this whole design exists to avoid.
@@ -624,14 +624,14 @@ function isOpen() { return false; }
 // The part of a file's directory the reader cannot already see.
 //
 // Inside an open packages/excalidraw/ every box was captioned
-// "packages/excalidraw/" — sixty repetitions of the folder heading directly
+// "packages/excalidraw/" - sixty repetitions of the folder heading directly
 // above them. It is the definition of information overload, and it was setting
 // the width of every column in the graph.
 function dirSuffix(x) {
   if (!x.dir || x.group) return '';
   // Relative to the scope the reader is already inside. Without this every
-  // box inside packages/excalidraw/ is captioned "packages/excalidraw/" — the
-  // breadcrumb directly above it, repeated for every box — and because the
+  // box inside packages/excalidraw/ is captioned "packages/excalidraw/" - the
+  // breadcrumb directly above it, repeated for every box - and because the
   // caption has to fit, it sets the width of every column.
   const f = focusPath();
   if (f && x.dir.startsWith(f)) return x.dir.slice(f.length);
@@ -688,19 +688,19 @@ function packChildren(kids) {
 // The numbered columns along the top.
 //
 // These used to come from the top-level packing, which knows only about the
-// nine root folders — one head, labelled "1", stretched across the whole
+// nine root folders - one head, labelled "1", stretched across the whole
 // graph. The columns a reader actually sees are produced by the nested packing
 // inside every open folder, and that result was thrown away.
 //
 // So derive them from where the boxes finally landed. Every box at the same x
 // is one column, and x is monotonic in dependency depth (checked on excalidraw:
 // 136 depth pairs, zero inversions), so numbering the columns left to right
-// numbers them in dependency order — which is the whole point of the label.
+// numbers them in dependency order - which is the whole point of the label.
 function columnsOf(boxes) {
   const at = new Map();
   for (const b of boxes) {
     // An open folder is a backdrop spanning all its children, not a column of
-    // its own — counting it produced a "column" 5,768px wide.
+    // its own - counting it produced a "column" 5,768px wide.
     if (isOpen(b)) continue;
     const x = Math.round(b.x);
     const c = at.get(x);
@@ -713,13 +713,13 @@ function columnsOf(boxes) {
 // Depth within the current scope.
 //
 // A folder's global depth is the minimum over everything inside it, so at the
-// root — where every module contains something shallow — every box lands in
+// root - where every module contains something shallow - every box lands in
 // column one and the numbered axis says nothing. Recomputing over just the
 // boxes on screen is cheap because there are at most a few dozen, and it makes
 // the column numbers true again: column 1 really is "nothing here imports
 // these".
 //
-// Longest path, bounded, then compacted to consecutive ranks — the same
+// Longest path, bounded, then compacted to consecutive ranks - the same
 // algorithm and the same two reasons as internal/web/layout.go.
 function localDepths(kids, edges) {
   for (const k of kids) k.ldepth = 0;
@@ -746,7 +746,7 @@ function relayout() {
 
   // One pass over every edge, classified by where each end sits relative to
   // the scope. The five buckets are counted rather than inferred so the sum
-  // can be checked against the edge total — an edge that silently belongs to
+  // can be checked against the edge total - an edge that silently belongs to
   // no bucket is a connection the reader never learns about.
   const agg = new Map();
   const cross = new Map();
@@ -884,7 +884,7 @@ let anim = null;
 function moveTo(nx, ny, ns, ms = 320) {
   // Animations run on requestAnimationFrame, which a browser stops calling in
   // a tab that is not visible. The zoom between levels sets the camera to its
-  // starting point first, so a throttled tab would be left parked there — the
+  // starting point first, so a throttled tab would be left parked there - the
   // view stuck mid-transition at a scale nobody asked for, until it happened
   // to be focused again. If there will be no frames, go straight there.
   if (document.hidden) { tx = nx; ty = ny; s = ns; anim = null; draw(); return; }
@@ -924,7 +924,7 @@ function fitParams() {
   let ns = whole || both >= READABLE ? both : Math.max(READABLE, (VH - pad * 2) / h);
   // The old ceiling was set when the whole repository was on screen at once.
   // A module view is seven boxes, and holding it at 1.1 leaves most of the
-  // window empty around a small diagram — the zoom should follow how much
+  // window empty around a small diagram - the zoom should follow how much
   // there is to look at.
   ns = Math.min(ns, view.boxes.length <= 14 ? 1.75 : 1.1);
   const fitsW = w * ns <= VW - pad * 2;
@@ -963,7 +963,7 @@ function render() {
   // Under the boxes, not over them. Edges were moved on top when folders were
   // drawn as containers, because a line into an open folder vanished at its
   // border. Nothing nests any more, so the only thing painting last achieves
-  // is drawing lines across the labels — which is what it was doing.
+  // is drawing lines across the labels - which is what it was doing.
   if (selected) drawChain(s > 0.28);
   drawBoxes(x0, y0, x1, y1);
   drawLayerHeads();
@@ -975,7 +975,7 @@ function render() {
 // Number the columns.
 //
 // The left-to-right order is the whole point of the picture and nothing said
-// so. Column 1 is what nothing imports — the entry points — and each column
+// so. Column 1 is what nothing imports - the entry points - and each column
 // after it is one import further in, so "how deep is this file" becomes
 // something you can read off the axis instead of infer.
 // A withheld picture has to announce itself, or it reads as an empty one.
@@ -984,7 +984,7 @@ function drawDenseNote() {
   ctx.font = '12.5px "Geist", ui-sans-serif, sans-serif';
   ctx.fillStyle = C.inkFaint;
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText(view.edges.length + ' connections here — click a file to see its own',
+  ctx.fillText(view.edges.length + ' connections here - click a file to see its own',
                0, -12);
   ctx.textBaseline = 'middle';
 }
@@ -1037,10 +1037,10 @@ function drawEdges(x0, y0, x1, y1, curved) {
     // An edge touching the selection is never culled. Culling it produced the
     // worst bug in the view: select a node the camera happens not to be
     // looking at and all ten of its connections vanish, leaving only unrelated
-    // context lines — the graph appearing to show nothing connected to the one
+    // context lines - the graph appearing to show nothing connected to the one
     // thing you asked about.
     const touches = selected && (e.from === selected || e.to === selected);
-    // On a dense level the background lines are withheld entirely — see
+    // On a dense level the background lines are withheld entirely - see
     // EDGE_LIMIT. What the selection touches is still drawn, which is the
     // only thing that was legible there anyway.
     if (view.dense && !touches && !(selected && hotSet.has(e.from) && hotSet.has(e.to))) continue;
@@ -1058,8 +1058,8 @@ function drawEdges(x0, y0, x1, y1, curved) {
       // context. Ninety-eight equally-weighted lines is the same wall of
       // spaghetti the grouping was meant to remove.
       const direct = e.from === selected || e.to === selected;
-      // One hop. Folder aggregation collapses distance — a folder box sits one
-      // hop from every file inside it — so allowing two reached 206 lines on a
+      // One hop. Folder aggregation collapses distance - a folder box sits one
+      // hop from every file inside it - so allowing two reached 206 lines on a
       // node with 10 real connections. What is left is the ego network: the
       // selection, its neighbours, and how those neighbours relate to each
       // other. The full reachable set still shades the boxes.
@@ -1136,7 +1136,7 @@ function arrowHead(a, b) {
 // Which side of each box an edge leaves and arrives on.
 //
 // This used to be right-to-left always. Most edges run left to right, so most
-// of the time that was correct — but an edge pointing backwards then started
+// of the time that was correct - but an edge pointing backwards then started
 // at the far right of the canvas and swept all the way left, crossing every
 // box and every label in between to reach a target that was sitting a few
 // pixels away. Backward edges leave the left side and arrive on the right,
@@ -1147,7 +1147,7 @@ function edgeEnds(a, b) {
 
   // Two boxes in the same column. This is not a corner case: modules that
   // depend on each other cannot be ordered, so they all rank the same and land
-  // in one column — excalidraw's common, element, excalidraw and math are a
+  // in one column - excalidraw's common, element, excalidraw and math are a
   // four-way cycle sitting side by side. Treating them as a normal edge sent
   // every line out of one box's right edge and back in through another's left,
   // across all four labels.
@@ -1295,7 +1295,7 @@ function layoutText(x) {
 // holds, with the part you are standing in lit up.
 //
 // The first attempt drew the whole-repo layout shrunk down, which at this size
-// is a row of vertical bars — a picture of the *layout*, not of the
+// is a row of vertical bars - a picture of the *layout*, not of the
 // repository, and unreadable. Area is the thing that survives being made
 // small: it says how big each part is and where it sits, at a glance.
 function squarify(items, x, y, w, h) {
@@ -1411,7 +1411,7 @@ function worldAt(cx, cy) {
 }
 
 // Innermost box wins, except that an open container's title bar belongs to the
-// container itself — that is how it is closed again.
+// container itself - that is how it is closed again.
 function boxAt(wx, wy) {
   let best = null;
   for (const x of view.boxes) {
@@ -1455,7 +1455,7 @@ stage.addEventListener('click', e => {
   if (moved) return;
   const hit = boxAt(...worldAt(e.clientX, e.clientY));
   if (!hit) { select(null); return; }
-  // A click tells you about the thing. Going inside it is a second gesture —
+  // A click tells you about the thing. Going inside it is a second gesture -
   // double-click, or the button in the panel. Descending on a single click
   // meant a folder could never be asked what it was: the only thing clicking
   // one did was replace the screen.
@@ -1503,8 +1503,8 @@ function relations(id) {
     (outm.get(e.from) || outm.set(e.from, []).get(e.from)).push(e.to);
   }
   // Distance from the selection, so the drawing can fade the halo by how far
-  // away a thing is. The full reachable set still shades the boxes — that is
-  // the blast radius, and it is worth seeing — but drawing every one of its
+  // away a thing is. The full reachable set still shades the boxes - that is
+  // the blast radius, and it is worth seeing - but drawing every one of its
   // edges is what produced the hairball. Lines stop at HOP_LIMIT.
   hops = new Map([[id, 0]]);
   const walk = (start, adj) => {
@@ -1560,7 +1560,7 @@ function frameSelection(id) {
 
   // Readability wins over completeness. A central file's neighbours can span
   // the entire layout, and fitting all of them put the whole graph on screen at
-  // 0.22 — every label a grey smudge, which answers nothing. Below this floor,
+  // 0.22 - every label a grey smudge, which answers nothing. Below this floor,
   // frame the selection itself and let the edges run off-screen: they point the
   // right way, and the panel names every one of them with its import line.
   const FLOOR = 0.75;
@@ -1606,7 +1606,7 @@ function navigate(segs, keepSelection) {
 
   focus = segs.slice();
   // A selection from the previous scope leaves hotSet full of ids that have no
-  // box here, and drawBoxes dims everything not in hotSet — the entire new
+  // box here, and drawBoxes dims everything not in hotSet - the entire new
   // scope would render at alpha 0.12.
   if (!keepSelection) { selected = null; hotSet = null; upSet = downSet = null; renderPanel(null); }
   relayout();
@@ -1799,7 +1799,7 @@ function renderFolder(panel, x) {
 // Where a file sits: two rungs above, two below.
 //
 // "Understand two levels up and two levels down" is a maxim about seniority,
-// and in a codebase it is not a metaphor — a level is a position in the import
+// and in a codebase it is not a metaphor - a level is a position in the import
 // graph and two levels is two hops. Editors solved down thirty years ago:
 // cmd-click and you are in the file a name came from. Nothing solved up, so
 // everyone knows what they are standing on and almost nobody knows what is
@@ -1842,7 +1842,7 @@ function ladderOf(id) {
   const n = byId.get(id) || {};
   let verdict;
   if (n.entry && u.rungs[0].length === 0)
-    verdict = 'An entry point — nothing imports it because it is where the outside world comes in.';
+    verdict = 'An entry point - nothing imports it because it is where the outside world comes in.';
   else if (u.rungs[0].length === 0)
     verdict = 'Nothing imports this. Either it is reached in a way no static tool can see, or it has fallen out of the program.';
   else if ((share >= 0.25 && u.total >= 10) || u.total >= 200)
@@ -1872,13 +1872,13 @@ function renderLadder(id) {
   };
   return `<h3>where this sits</h3>` +
     rung(L.up.rungs[1], '▲▲', 'two levels up') +
-    rung(L.up.rungs[0], '▲', 'one level up — needs this directly') +
+    rung(L.up.rungs[0], '▲', 'one level up - needs this directly') +
     `<div class="rung here"><span class="rm">●</span><span class="rl">this file</span></div>` +
-    rung(L.down.rungs[0], '▼', 'one level down — what it stands on') +
+    rung(L.down.rungs[0], '▼', 'one level down - what it stands on') +
     rung(L.down.rungs[1], '▼▼', 'two levels down') +
     `<p class="verdict">${esc(L.verdict)}</p>` +
     `<p class="verdict sub">${L.up.total} files above it, ${L.down.total} below` +
-    (L.share >= 0.02 ? ` — ${(L.share * 100).toFixed(0)}% of the repository` : '') + `.</p>`;
+    (L.share >= 0.02 ? ` - ${(L.share * 100).toFixed(0)}% of the repository` : '') + `.</p>`;
 }
 
 function renderPanel(x) {
@@ -1895,8 +1895,8 @@ function renderPanel(x) {
     wire(panel); return;
   }
 
-  // Synthetic boxes — the repository-root files, the merged tail, external
-  // packages — are containers too. Falling through to the file branch gave
+  // Synthetic boxes - the repository-root files, the merged tail, external
+  // packages - are containers too. Falling through to the file branch gave
   // them a panel with a kind of "group" and no facts at all, which is what
   // clicking one looked like: nothing.
   if (x.group || x.synthetic) { renderFolder(panel, x); return; }
@@ -2011,7 +2011,7 @@ async function showSource(path, line) {
 
 // ── boot ────────────────────────────────────────────────────────────────────
 //
-// The counts that used to sit in the header — cycles, unreachable — moved to
+// The counts that used to sit in the header - cycles, unreachable - moved to
 // the report, where each one can say which and what it costs instead of only
 // how many.
 document.getElementById('hint').textContent = DATA.truncated
@@ -2070,7 +2070,7 @@ function renderReport() {
   body.innerHTML =
     `<h1>${esc(repoName())}</h1>` +
     `<p class="lede">${st.files} files, ${st.imports} imports, in ${mods} ` +
-    `${mods === 1 ? 'part' : 'parts'}. Everything below was read out of the code itself — ` +
+    `${mods === 1 ? 'part' : 'parts'}. Everything below was read out of the code itself - ` +
     `nothing here was configured.</p>` +
 
     `<div class="num">` +
@@ -2099,7 +2099,7 @@ function renderReport() {
       R.unreachable, '', R.entryBail ? '' : 'Nothing. Every file is reachable.') +
 
     section('Where a change is felt furthest',
-      'Ranked by how many files sit downstream. Entry points are left out — a large reach ' +
+      'Ranked by how many files sit downstream. Entry points are left out - a large reach ' +
       'there is the shape of a program, not a finding about it.',
       R.heavy, '', 'Nothing depends on anything else here.') +
 

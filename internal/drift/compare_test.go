@@ -65,7 +65,7 @@ func TestCompareOnAnUnchangedTreeIsSilent(t *testing.T) {
 		t.Errorf("nothing changed, but %d findings were reported: %+v", len(r.Findings), r.Findings)
 	}
 	if r.Regressions != 0 {
-		t.Errorf("an unchanged tree reported %d regressions — this is a CI gate", r.Regressions)
+		t.Errorf("an unchanged tree reported %d regressions - this is a CI gate", r.Regressions)
 	}
 	if r.Coupling.Head != r.Coupling.Base {
 		t.Errorf("coupling moved on its own: %v then %v", r.Coupling.Base, r.Coupling.Head)
@@ -106,7 +106,7 @@ func TestCompareCatchesACycleAddedInTheWorkingTree(t *testing.T) {
 	}
 }
 
-// A base that does not exist must be explained, not crash — and must not
+// A base that does not exist must be explained, not crash - and must not
 // leave a worktree behind.
 func TestCompareBailsOnAnUnknownBase(t *testing.T) {
 	root := gitRepo(t, map[string]string{"a.ts": `export const a = 1;`})
@@ -145,7 +145,7 @@ func TestCompareLeavesNoWorktreeBehind(t *testing.T) {
 	}
 }
 
-// Uncommitted files must be visible to the head scan — comparing the working
+// Uncommitted files must be visible to the head scan - comparing the working
 // tree is the whole point, and reading HEAD twice would report nothing ever.
 func TestCompareSeesUncommittedWork(t *testing.T) {
 	root := gitRepo(t, map[string]string{
@@ -154,7 +154,7 @@ func TestCompareSeesUncommittedWork(t *testing.T) {
 		"src/a.ts":     `export const a = 1;`,
 	})
 	// A brand new file, never committed, that strands nothing and adds no
-	// cycle — but does change the module edges.
+	// cycle - but does change the module edges.
 	write(t, root, map[string]string{
 		"src/index.ts":    `import "./a"; import "./newthing";`,
 		"src/newthing.ts": `export const n = 1;`,

@@ -1,8 +1,8 @@
 # cairn verification report
 
-**Verdict:** The MCP product claim mostly holds; the headline "grep finds ~40% / cairn answers in ~50 tokens" does **not** hold as a general fact under an independent transitive grep baseline. Across 28 file-repo cases on 10 repos, median grep recall vs cairn is **~18%** (mean ~31%), not 40%. Grep precision is usually excellent (~99%) on relative-import chains. Cairn CLI blast --json is thousands of tokens (median ~6.6k), not ~50 — the ~50-token figure is an MCP compact reply (~28-63 tokens, under 2ms after startup). cairn verify with only typescript installed scored ~91% P/R on vuejs-core and ~38% on tanstack-query; the README 100% claim was not reproduced here.
+**Verdict:** The MCP product claim mostly holds; the headline "grep finds ~40% / cairn answers in ~50 tokens" does **not** hold as a general fact under an independent transitive grep baseline. Across 28 file-repo cases on 10 repos, median grep recall vs cairn is **~18%** (mean ~31%), not 40%. Grep precision is usually excellent (~99%) on relative-import chains. Cairn CLI blast --json is thousands of tokens (median ~6.6k), not ~50 - the ~50-token figure is an MCP compact reply (~28-63 tokens, under 2ms after startup). cairn verify with only typescript installed scored ~91% P/R on vuejs-core and ~38% on tanstack-query; the README 100% claim was not reproduced here.
 
-Methodology: independent /workspace/cairn-verify/grep_blast.py — relative imports + extension ladder + index + .js-to-.ts only. Does not resolve tsconfig paths, workspace package names, or exports maps. Provisional GT = cairn blast set.
+Methodology: independent /workspace/cairn-verify/grep_blast.py - relative imports + extension ladder + index + .js-to-.ts only. Does not resolve tsconfig paths, workspace package names, or exports maps. Provisional GT = cairn blast set.
 
 ---
 
@@ -49,7 +49,7 @@ The ~40% figure only shows up on favorable mid-layer files (apiWatch 43%, react-
 
 | Claim | Result |
 |---|---|
-| careful grep finds ~40% | **Mostly false as a general claim.** Median ~18%. ~40% only on some mid-layer files. Grep usually does not know it is incomplete — that half is fair. |
+| careful grep finds ~40% | **Mostly false as a general claim.** Median ~18%. ~40% only on some mid-layer files. Grep usually does not know it is incomplete - that half is fair. |
 | cairn ~50 tokens | **True for MCP blast** (~28-63). **False for CLI --json** (median ~6.6k). |
 | MCP under 5ms after startup | **Holds** (0.19-1.44ms measured). |
 
@@ -64,31 +64,31 @@ Full package install skipped. Only the TypeScript compiler package linked. That 
 | vuejs-core | 2136 | 1968 | 91.4% | 91.9% | 168 | 6 | 17 |
 | tanstack-query | 4159 | 1681 | 37.8% | 40.4% | 2478 | 0 | 290 |
 
-Vue real miss: runtime-dom import of the reactivity workspace package — tsc resolves to a workspace file; cairn parser did not find the specifier. TanStack dominated by missing example framework deps plus workspace-guess. The README 100 percent claim is unverified here and collapses under incomplete install.
+Vue real miss: runtime-dom import of the reactivity workspace package - tsc resolves to a workspace file; cairn parser did not find the specifier. TanStack dominated by missing example framework deps plus workspace-guess. The README 100 percent claim is unverified here and collapses under incomplete install.
 
 ---
 
 ## Spot-checks (vue makeMap.ts)
 
 **Dependents cairn lists (confirmed):**
-1. packages/shared/__tests__/cssVars.spec.ts — imports ../src barrel; barrel re-exports makeMap. Valid. Grep finds it too.
-2. packages/compiler-core/__tests__/transforms/transformExpressions.spec.ts — imports ../../../shared/src. Valid barrel chain.
-3. packages-private/dts-built-test/src/index.ts — imports only vue. Cairn includes via workspace graph; grep cannot. This is where cairn earns value.
+1. packages/shared/__tests__/cssVars.spec.ts - imports ../src barrel; barrel re-exports makeMap. Valid. Grep finds it too.
+2. packages/compiler-core/__tests__/transforms/transformExpressions.spec.ts - imports ../../../shared/src. Valid barrel chain.
+3. packages-private/dts-built-test/src/index.ts - imports only vue. Cairn includes via workspace graph; grep cannot. This is where cairn earns value.
 
 **Omissions (cairn correctly excludes):**
-1. packages/shared/src/codeframe.ts — sibling, no makeMap edge.
-2. packages/shared/src/typeUtils.ts — no makeMap edge.
-3. packages/shared/src/cssVars.ts — impl does not import makeMap (only the test hits the barrel).
+1. packages/shared/src/codeframe.ts - sibling, no makeMap edge.
+2. packages/shared/src/typeUtils.ts - no makeMap edge.
+3. packages/shared/src/cssVars.ts - impl does not import makeMap (only the test hits the barrel).
 
 ---
 
 ## Failures / grep wins / strawman
 
 - Package aliases / barrels: Vue/TanStack leaf recall 1-4%. Grep cannot follow workspace package names.
-- Rare id: packages/shared/ReactElementType.js — both cairn and grep return 0 dependents.
+- Rare id: packages/shared/ReactElementType.js - both cairn and grep return 0 dependents.
 - Preact src/util.js: grep precision ~54% (stem util false friends in compat/); cairn lists demo/* instead. Sets disagree.
-- Vite utils: ~95% recall — relative-heavy package; grep nearly matches.
-- Strawman: ripgrep plus a TypeScript language service find-references walk would recover workspace and path-alias edges without a custom cairn resolver. cairn verify itself diffs against tsc — admitting LSP-class resolution is the real competitor. Cairn still wins on offline binary, MCP token compression, and whole-repo transitive blast without an editor session.
+- Vite utils: ~95% recall - relative-heavy package; grep nearly matches.
+- Strawman: ripgrep plus a TypeScript language service find-references walk would recover workspace and path-alias edges without a custom cairn resolver. cairn verify itself diffs against tsc - admitting LSP-class resolution is the real competitor. Cairn still wins on offline binary, MCP token compression, and whole-repo transitive blast without an editor session.
 
 ---
 
@@ -96,7 +96,7 @@ Vue real miss: runtime-dom import of the reactivity workspace package — tsc re
 
 Startup (go run): 0.239s. Then: blast looseEqual 0.41ms / ~28 tokens; blast makeMap 0.19ms / ~63 tokens; ladder 1.13ms / ~133 tokens; overview 1.44ms / ~166 tokens.
 
-Ladder on packages/shared/src/looseEqual.ts: shows 1 direct importer (shared/src/index.ts), 166 two levels up, down through general.ts then makeMap.ts, total 462 above. Yes — two levels of dependents are shown.
+Ladder on packages/shared/src/looseEqual.ts: shows 1 direct importer (shared/src/index.ts), 166 two levels up, down through general.ts then makeMap.ts, total 462 above. Yes - two levels of dependents are shown.
 
 ---
 
