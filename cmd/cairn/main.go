@@ -1,8 +1,7 @@
 // Command cairn reads a repository and shows you what it actually depends on.
 //
 // It builds one graph with two halves joined: the files in your repo importing
-// each other, and the packages those imports drag in. See DESIGN.md for the
-// decisions behind it.
+// each other, and the packages those imports drag in.
 package main
 
 import (
