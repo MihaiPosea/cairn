@@ -934,8 +934,18 @@ function fitParams() {
   ns = Math.min(ns, view.boxes.length <= 14 ? 1.75 : 1.1);
   const fitsW = w * ns <= VW - pad * 2;
   const fitsH = h * ns <= VH - pad * 2;
+  // A level is usually far wider than it is tall - seven boxes over four
+  // dependency columns comes out around 1160 by 200 - so the fit is decided by
+  // the width and there is height to spare no matter how much it zooms.
+  // Centring that leftover space put equal bands above and below, and a short
+  // wide diagram floating in the middle of a tall window reads as lost rather
+  // than as composed. Weighting it upwards sits the graph under its column
+  // numbers, where it is being read from, and gathers the slack underneath by
+  // the minimap. A level that nearly fills the window has little slack to place
+  // and barely moves.
+  const slack = Math.max(VH - h * ns, 0);
   return [fitsW ? (VW - w * ns) / 2 : pad,
-          (fitsH ? (VH - h * ns) / 2 : pad) + HEAD * ns, ns];
+          (fitsH ? slack * 0.32 : pad) + HEAD * ns, ns];
 }
 function fit(animate = true) {
   const [a, b, c] = fitParams();
