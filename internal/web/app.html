@@ -89,10 +89,15 @@
              margin:2px 0 3px; word-break:break-all; color:var(--ink); }
   .dir { font:11px var(--font-mono); color:var(--ink-faint); word-break:break-all; margin-bottom:14px; }
   .kind { font:11px var(--font-sans); color:var(--ink-faint); letter-spacing:0.02em; }
-  .row { display:flex; justify-content:space-between; align-items:baseline; padding:7px 0;
+  /* gap and min-width:0 are what keep a long value inside the panel. A flex
+     item will not shrink below its own content width by default, so a wide
+     value pushed itself past the right edge and was clipped there rather than
+     wrapping. The label holds its size; the value takes what is left. */
+  .row { display:flex; justify-content:space-between; align-items:baseline; padding:7px 0; gap:10px;
          border-bottom:1px solid var(--rule); font:13px var(--font-sans); }
-  .row span:first-child { color:var(--ink-soft); }
-  .row span:last-child { color:var(--ink); font-weight:550; font-variant-numeric:tabular-nums; }
+  .row span:first-child { color:var(--ink-soft); flex:0 0 auto; }
+  .row span:last-child { color:var(--ink); font-weight:550; font-variant-numeric:tabular-nums;
+                         min-width:0; text-align:right; overflow-wrap:anywhere; }
   h3 { font:550 11px/1 var(--font-sans); letter-spacing:0.04em; 
        color:var(--ink-faint); margin:22px 0 8px; }
   h3 .k { display:inline-block; width:7px; height:7px; border-radius:0;
