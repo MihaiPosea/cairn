@@ -6,7 +6,7 @@ on the same file so you can see graph reuse (blast2 << blast1).
 ## Arrow flow
 
 ```
-agent / Claude
+coding agent
     |
     |  MCP JSON-RPC over stdio (one JSON line per message)
     v
@@ -50,5 +50,4 @@ Replace:
 
 ## Artifacts
 
-- `VERIFICATION_REPORT.md` - independent verify summary
-- `compare_results.json` - raw compare numbers (keep as-is)
+- `compare_results.json` - raw numbers from the comparison run

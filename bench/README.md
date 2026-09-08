@@ -19,8 +19,8 @@ whose import actually resolves back, recurse on those - and counts every byte
 it reads. Ground truth is cairn's own graph, which `cairn verify` separately
 checks against the TypeScript compiler.
 
-The result that matters is not the token ratio. It is that the grep route
-terminates on its own, having found about 41% of the answer, with no way to
-know it is missing anything. It cannot follow a barrel re-export, a tsconfig
-path alias, or a workspace import, because resolving those is not string
-manipulation - and implementing it properly is what cairn is.
+The token ratio is the least interesting result. What matters is that the grep
+route stops on its own, having found a median of 14% of the answer across 50
+repositories, and reports nothing to say it fell short. It cannot follow a
+barrel re-export, a tsconfig path alias or a workspace import, because none of
+those can be resolved by manipulating strings.
