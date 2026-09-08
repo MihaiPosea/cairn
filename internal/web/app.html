@@ -1072,7 +1072,12 @@ function drawEdges(x0, y0, x1, y1, curved) {
   }
 
   ctx.strokeStyle = C.edge;
-  ctx.globalAlpha = selected ? 0.12 : 0.38;
+  // 0.38 was too light to read as a connection at a glance, especially in the
+  // embedded copies of this page, where the whole thing is scaled down and the
+  // lines are the first thing to disappear. The dimmed value is what everything
+  // else fades to while one node is selected, so it stays well under the
+  // highlighted chain drawn on top of it.
+  ctx.globalAlpha = selected ? 0.14 : 0.55;
   const widths = [1, 1.9, 3.2];
   for (let i = 0; i < 3; i++) {
     if (!buckets[i].length) continue;
